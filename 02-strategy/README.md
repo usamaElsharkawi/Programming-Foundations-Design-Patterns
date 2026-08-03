@@ -1073,6 +1073,356 @@ Strategy just makes it the most visible.
 
 ---
 
-_Status: documented after our discussion of lecture 2.8. The conceptual part of
-the Strategy chapter is complete. Next: **understanding the Java exercise code
-together, then implementing it in TypeScript** in the sandbox._
+## 9. Phase 1 — Understanding the Java exercise code
+
+> Source: `Ex_Files_.../02_StrategyPattern/ducks/`
+
+We read every Java file in the Strategy exercise folder and analyzed them
+step by step. Here's the complete breakdown.
+
+### Step 1 — The interfaces (the contracts)
+
+**FlyBehavior.java**
+```java
+public interface FlyBehavior {
+    public void fly();
+}
+```
+
+**QuackBehavior.java**
+```java
+public interface QuackBehavior {
+    public void quack();
+}
+```
+
+Each interface defines a single method with no body. Key points:
+
+- **One method each** — each interface represents one capability (Single
+  Responsibility applied to interfaces).
+- **No implementation** — the interface doesn't know *how* to fly; it only knows
+  that flying is *possible*.
+- **The `public` keyword is redundant** in Java — interface methods are public by
+  default.
+- **These are the supertypes** — the concrete classes will be the subtypes. The
+  Duck holds references to these *interfaces*, not to concrete classes.
+
+**Why two separate interfaces?** Because flying and quacking are independent
+capabilities. A duck might fly but not quack (decoy), or quack but not fly
+(rubber duck). Keeping them separate means a class can implement one without
+the other — the **à la carte** flexibility from the HAS-A principle.
+
+### Step 2 — The concrete behaviors (fly)
+
+**FlyWithWings.java**
+```java
+public class FlyWithWings implements FlyBehavior {
+    public void fly() {
+        System.out.println("I'm flying!!");
+    }
+}
+```
+
+**FlyNoWay.java**
+```java
+public class FlyNoWay implements FlyBehavior {
+    public void fly() {
+        System.out.println("I can't fly");
+    }
+}
+```
+
+**FlyRocketPowered.java**
+```java
+public class FlyRocketPowered implements FlyBehavior {
+    public void fly() {
+        System.out.println("I'm flying with a rocket");
+    }
+}
+```
+
+Each class implements `FlyBehavior` and provides its own version of `fly()`.
+Key points:
+
+- **They're siblings, not a hierarchy** — none inherits from the others. All at
+  the same level, each independently implementing the interface.
+- **Each has ONE job** — knows how to do one thing (Single Responsibility).
+- **They're reusable anywhere** — free-standing, not trapped in the Duck
+  hierarchy. Any class can hold a `FlyBehavior`.
+- **Adding a new behavior = one new class** — create `FlyWithJetPack implements
+  FlyBehavior`. Zero existing files change. This is **Open-Closed** in action.
+
+### Step 3 — The concrete behaviors (quack)
+
+**Quack.java** → prints "Quack"
+
+**Squeak.java** → prints "Squeak"
+
+**MuteQuack.java** → prints "<< Silence >>"
+
+**FakeQuack.java** → prints "Qwak"
+
+Same pattern as fly behaviors, just for quacking. Key points:
+
+- **Four variations of the same capability** — the "family of algorithms" from
+  the GoF definition. All interchangeable because they share the same interface.
+- **`MuteQuack` is the "do nothing" behavior done right** — it's a first-class
+  behavior object, not a hacky override. This is how composition handles "no
+  behavior" gracefully.
+- **They're independent of the fly behaviors** — a duck can mix ANY fly behavior
+  with ANY quack behavior.
+
+**The multiplicative flexibility:** 3 fly × 4 quack = **12 possible duck
+configurations** from just 7 small classes. With inheritance, you'd need 12
+separate subclasses. Composition gives you (m × n) combinations from just
+(m + n) classes.
+
+### Step 4 — The Duck base class (the context / the heart)
+
+**Duck.java**
+```java
+public abstract class Duck {
+    FlyBehavior flyBehavior;
+    QuackBehavior quackBehavior;
+
+    public Duck() {
+    }
+
+    public void setFlyBehavior(FlyBehavior fb) {
+        flyBehavior = fb;
+    }
+
+    public void setQuackBehavior(QuackBehavior qb) {
+        quackBehavior = qb;
+    }
+
+    abstract void display();
+
+    public void performFly() {
+        flyBehavior.fly();
+    }
+
+    public void performQuack() {
+        quackBehavior.quack();
+    }
+
+    public void swim() {
+        System.out.println("All ducks float, even decoys!");
+    }
+}
+```
+
+This is the **context** — the class that HOLDS the strategies and DELEGATES to
+them. Line-by-line:
+
+- **The fields (composition):** `FlyBehavior flyBehavior` and `QuackBehavior
+  quackBehavior` — the duck holds two behavior objects, typed as the
+  **interfaces** (program to an interface). No access modifier = **package-private**
+  (subclasses in the same package can set them directly).
+
+- **The setters (runtime swapping):** `setFlyBehavior()` and
+  `setQuackBehavior()` allow changing behavior at runtime.
+
+- **The abstract method:** `abstract void display()` — each concrete duck looks
+  different, so subclasses must implement it. This is the only thing that truly
+  varies by duck type.
+
+- **The delegation methods (the core of the pattern):** `performFly()` calls
+  `flyBehavior.fly()` and `performQuack()` calls `quackBehavior.quack()`. The
+  duck doesn't know how to fly — it **delegates** to its behavior object. This
+  is the mechanism that makes HAS-A work.
+
+- **The stable behavior:** `swim()` is truly universal (every duck floats,
+  always) — so it stays as an inherited method. Everything that *varies* was
+  pulled out. This is the hybrid: **inheritance for what's stable, composition
+  for what varies.**
+
+Key points:
+
+- `Duck` is abstract — can't be instantiated (a generic duck has no appearance).
+- The fields are package-private — a design smell. In a stricter design, they'd
+  be `private` and only setters would be used.
+- `performFly()` and `performQuack()` are NOT the behavior — they're
+  **delegators**. The actual flying logic lives in `FlyWithWings.fly()`.
+- The duck has **zero flying or quacking logic** — it only knows it *has*
+  something that can fly and something that can quack.
+
+### Step 5 — The concrete ducks (thin subclasses)
+
+**MallardDuck.java**
+```java
+public class MallardDuck extends Duck {
+    public MallardDuck() {
+        quackBehavior = new Quack();
+        flyBehavior = new FlyWithWings();
+    }
+    public void display() {
+        System.out.println("I'm a real Mallard duck");
+    }
+}
+```
+
+**ModelDuck.java**
+```java
+public class ModelDuck extends Duck {
+    public ModelDuck() {
+        flyBehavior = new FlyNoWay();
+        quackBehavior = new Quack();
+    }
+    public void display() {
+        System.out.println("I'm a model duck");
+    }
+}
+```
+
+**DecoyDuck.java**
+```java
+public class DecoyDuck extends Duck {
+    public DecoyDuck() {
+        setFlyBehavior(new FlyNoWay());
+        setQuackBehavior(new MuteQuack());
+    }
+    public void display() {
+        System.out.println("I'm a duck Decoy");
+    }
+}
+```
+
+**RubberDuck.java** (two constructors — the interesting one)
+```java
+public class RubberDuck extends Duck {
+    public RubberDuck() {
+        flyBehavior = new FlyNoWay();
+        quackBehavior = () -> System.out.println("Squeak");  // lambda!
+    }
+    public RubberDuck(FlyBehavior flyBehavior, QuackBehavior quackBehavior) {
+        this.flyBehavior = flyBehavior;
+        this.quackBehavior = quackBehavior;
+    }
+    public void display() {
+        System.out.println("I'm a rubber duckie");
+    }
+}
+```
+
+Each subclass does two things:
+1. **Configures its default behaviors** in the constructor
+2. **Implements `display()`** (the abstract method)
+
+The subclasses are now **very thin** — they don't implement `fly()` or
+`quack()`; those are delegated. Everything else is inherited from `Duck`.
+
+Key points:
+
+- **Two ways to set behaviors** — `MallardDuck`/`ModelDuck` set fields directly
+  (`flyBehavior = new FlyWithWings()`); `DecoyDuck` uses setters
+  (`setFlyBehavior(new FlyNoWay())`). Both work because fields are
+  package-private. The setter approach is cleaner (respects encapsulation).
+
+- **RubberDuck's lambda** — `quackBehavior = () -> System.out.println("Squeak")`
+  is Java 8+ shorthand. `QuackBehavior` is a functional interface (single
+  method), so Java lets you create an implementation inline with a lambda
+  instead of writing a whole `Squeak` class.
+
+- **RubberDuck's second constructor (dependency injection)** — lets the caller
+  inject behaviors from outside instead of hardcoding them. Maximum flexibility.
+
+- **Subclasses went from fat to thin** — before Strategy, each subclass had to
+  implement `fly()`, `quack()`, `display()`, and override unwanted behaviors.
+  Now each has just a constructor (1–3 lines) + `display()` (1 line).
+
+### Step 6 — The simulators (the story)
+
+**MiniDuckSimulator1.java** (simple)
+```java
+public class MiniDuckSimulator1 {
+    public static void main(String[] args) {
+        Duck mallard = new MallardDuck();
+        mallard.performQuack();
+        mallard.performFly();
+
+        Duck model = new ModelDuck();
+        model.performFly();
+        model.setFlyBehavior(new FlyRocketPowered());
+        model.performFly();
+    }
+}
+```
+
+**Output:**
+```
+Quack
+I'm flying!!
+I can't fly
+I'm flying with a rocket
+```
+
+**MiniDuckSimulator.java** (full)
+```java
+public class MiniDuckSimulator {
+    public static void main(String[] args) {
+        MallardDuck mallard = new MallardDuck();
+        FlyBehavior cantFly = () -> System.out.println("I can't fly");
+        QuackBehavior squeak = () -> System.out.println("Squeak");
+        RubberDuck rubberDuckie = new RubberDuck(cantFly, squeak);
+        DecoyDuck decoy = new DecoyDuck();
+        Duck model = new ModelDuck();
+
+        mallard.performQuack();
+        rubberDuckie.performQuack();
+        decoy.performQuack();
+
+        model.performFly();
+        model.setFlyBehavior(new FlyRocketPowered());
+        model.performFly();
+    }
+}
+```
+
+The story has four acts:
+
+- **Act 1 — The mallard (default behaviors):** uses its hardcoded defaults
+  (`Quack` + `FlyWithWings`).
+
+- **Act 2 — The model duck (the payoff moment):** starts flightless
+  (`FlyNoWay`), then `setFlyBehavior(new FlyRocketPowered())` swaps it to a
+  rocket at runtime. Same method, same object, different result. **This is the
+  entire point of the pattern.**
+
+- **Act 3 — The rubber duck (dependency injection):** behaviors created as
+  lambdas and injected through the constructor. The caller decides the behavior.
+
+- **Act 4 — The decoy (the silent duck):** uses `MuteQuack` — the first-class
+  "silent" behavior. No hacks, no empty overrides.
+
+Key points:
+
+- **Everything is typed as `Duck` (the supertype)** — `Duck mallard = new
+  MallardDuck()`. The variable type is the abstraction; the actual object is the
+  concrete subtype. Program to an interface.
+
+- **The runtime swap is invisible to the caller** — `model.performFly()` is
+  called twice with the same method on the same object, but the result differs
+  because the internal behavior was swapped. This is what composition enables
+  that inheritance can't.
+
+- **Lambdas make behaviors disposable** — no need to write a whole class for a
+  one-off behavior. This hints at what TypeScript will make even cleaner with
+  function types.
+
+### Phase 1 summary
+
+We now understand the complete Java Strategy implementation:
+
+- ✅ The interfaces (contracts) — `FlyBehavior`, `QuackBehavior`
+- ✅ The concrete behaviors (implementations) — 3 fly + 4 quack behaviors
+- ✅ The Duck base class (context + delegation) — holds behaviors, delegates,
+  allows runtime swaps
+- ✅ The concrete ducks (thin subclasses) — configure defaults + implement
+  `display()`
+- ✅ The simulators (the story) — proves runtime swapping works
+
+---
+
+_Status: Phase 1 (understanding the Java code) documented. Next: **Phase 2 —
+Java → TypeScript translation decisions**._
