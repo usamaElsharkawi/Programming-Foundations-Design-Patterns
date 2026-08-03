@@ -509,5 +509,394 @@ Combine them and the design forces itself into the right shape:
 
 ---
 
-_Status: documented after our discussion of lectures 2.2–2.5. Next lecture:
-**2.6 — Applying the principles** (first TS code for Strategy)._
+## 6. Exploring the Strategy pattern
+
+> Course module: **Exploring the strategy pattern** (2.7)
+
+### The official definition (GoF)
+
+> **The Strategy Pattern defines a family of algorithms, encapsulates each
+> one, and makes them interchangeable. The algorithm can vary independently
+> from the clients that use it.**
+
+This is the Gang of Four definition — the shared vocabulary. Let's break it
+apart phrase by phrase.
+
+### Phrase 1 — "a family of algorithms"
+
+"Algorithm" here doesn't mean a sorting algorithm. It means *a way of doing
+something* — a behavior, a strategy, an approach. In the duck world:
+
+- "fly with wings" is an algorithm
+- "fly with a rocket" is an algorithm
+- "can't fly" is an algorithm
+- "quack loudly" is an algorithm
+- "squeak" is an algorithm
+
+"Family" means these are all variations of the *same* capability. They're
+siblings — they all answer the same question ("how do you fly?") with different
+answers. They share a contract (the interface), but each implements it
+differently.
+
+So **"a family of algorithms"** = a set of interchangeable ways to do one
+specific thing.
+
+```
+Family of "fly" algorithms:    Family of "quack" algorithms:
+  FlyWithWings                   Quack
+  FlyNoWay                       Squeak
+  FlyRocketPowered               MuteQuack
+  (all implement FlyBehavior)    (all implement QuackBehavior)
+```
+
+### Phrase 2 — "encapsulates each one"
+
+"Encapsulates" has two meanings here, and both matter:
+
+1. **Wrapped in its own class** — each algorithm lives inside its own concrete
+class (`FlyWithWings`, `FlyNoWay`, etc.). It's not scattered across the duck
+hierarchy. It's not duplicated. It has **one home**.
+
+2. **Hidden behind an interface** — the outside world doesn't see the concrete
+class. It only sees the interface (`FlyBehavior`). The *how* is hidden; only
+the *what* is exposed.
+
+This is exactly the "encapsulate what varies" principle — **each varying
+behavior gets pulled out and sealed inside its own capsule.**
+
+The payoff: **each algorithm can change without affecting anything else.** Want
+to change what "fly with wings" prints? Edit `FlyWithWings` only. No duck is
+touched. No other behavior is touched.
+
+### Phrase 3 — "makes them interchangeable"
+
+Because all algorithms in a family share the same interface, they're
+**plug-compatible**. You can swap one for another at any time, and the code
+using them doesn't notice.
+
+This is where "program to an interface" pays off. The duck holds a
+`FlyBehavior` (the interface), so it can hold **any** concrete implementation.
+Swapping is just:
+
+```
+flyBehavior = new FlyRocketPowered();   // swap — one line
+```
+
+No `if` statements. No `switch`. No editing the duck. Just **replace the
+object**.
+
+This interchangeability is what enables **runtime changes** — the thing
+inheritance and interfaces-alone couldn't do.
+
+### Phrase 4 — "the algorithm can vary independently from the clients that use it"
+
+"Client" = the code that *uses* the algorithm. In our case, the `Duck` class
+is the client of `FlyBehavior`. The duck *calls* `flyBehavior.fly()` but
+doesn't *know* how flying works.
+
+"Vary independently" means:
+
+- You can add a new flying algorithm (`FlyWithJetPack`) **without touching
+  `Duck`**.
+- You can change an existing algorithm (`FlyWithWings` now logs a message)
+  **without touching `Duck`**.
+- You can change `Duck` (add a new method, a new subclass) **without touching
+  any flying algorithm**.
+
+**The two sides evolve separately.** That's *independence*. The algorithms and
+their clients are **decoupled** — connected only by the thin contract of the
+interface.
+
+This is the opposite of inheritance, where changing the base class ripples to
+every descendant. Here, the behavior and the client are on **opposite sides of
+an interface**, and the interface is the only bridge.
+
+### How the definition maps to our duck design
+
+| Definition phrase | In the duck design |
+|---|---|
+| "a family of algorithms" | `FlyWithWings`, `FlyNoWay`, `FlyRocketPowered` — all the fly behaviors |
+| "encapsulates each one" | each in its own class, behind the `FlyBehavior` interface |
+| "makes them interchangeable" | duck holds a `FlyBehavior`, can swap any for any other |
+| "algorithm varies independently from clients" | add/change a fly behavior without touching `Duck`; change `Duck` without touching fly behaviors |
+
+### The two superpowers
+
+1. **Adaptability (flexibility)** — behaviors can be swapped at runtime. The
+model duck starts flightless and gets a rocket mid-program. No recompilation,
+no new class.
+
+2. **Reusability + independence** — a behavior is a self-contained unit.
+`FlyWithWings` can be reused by *any* duck, *and* can be changed without
+breaking any duck. The behavior and the duck don't know about each other's
+internals.
+
+### The one-line mental model
+
+> **Strategy = pull the varying behavior out into its own swappable objects,
+> talk to them through an interface, so behavior and client can change without
+> breaking each other.**
+
+---
+
+## 7. The generic Strategy class diagram
+
+> Course module: **Exploring the strategy pattern** (continued)
+
+The Strategy pattern has **three players** and **two relationships** between
+them. Understanding this skeleton means you understand *every* Strategy
+implementation, not just ducks.
+
+### The three players
+
+**Player 1 — The Strategy Interface (the contract).**
+
+This is the **abstraction**. It defines a single method — `doAlgorithm()` —
+that says *"any strategy must be able to do this,"* but says nothing about
+*how*.
+
+Think of it as a **job description**: "we need someone who can
+`doAlgorithm()`." It doesn't care who fills the role or how they do it.
+
+**Player 2 — The Concrete Strategies (the implementations).**
+
+These are the **actual behaviors** — the real, instantiated code. Each one
+implements the interface and provides its own version of `doAlgorithm()`.
+
+- `AlgorithmImpl_1` does the algorithm one way.
+- `AlgorithmImpl_2` does it another way.
+
+They're **siblings**, not parent/child. They don't know about each other.
+They only share the contract. You can add a third, a fourth, a fifth — none
+of the others change.
+
+**Player 3 — The Context (the superclass).**
+
+This is the **object that needs the behavior**. It has two things:
+
+1. **A field** typed as the interface — it *holds* a strategy (composition).
+2. **A method** that delegates to the strategy — it *uses* the behavior
+   without knowing how it works.
+
+The context also exposes a **setter** so the strategy can be swapped at
+runtime.
+
+In the duck world: `Duck` is the context, `flyBehavior` is the field,
+`performFly()` is the delegating method, and `setFlyBehavior()` is the setter.
+
+### The two relationships
+
+**Relationship 1 — Realization (interface → concrete strategies).**
+
+The concrete strategies **implement** the interface.
+
+**Meaning:** each concrete class *promises* to fulfill the contract. The
+interface is their **supertype**. Code that depends on the interface can use
+*any* of them interchangeably.
+
+This is **"program to an interface"** in action — the interface is the only
+thing anyone references.
+
+**Relationship 2 — Composition (context → interface).**
+
+The context **holds** a reference to the interface.
+
+**Meaning:** the context *has-a* strategy. It doesn't *inherit* the strategy
+(that would be IS-A). It **contains** it (HAS-A). The strategy is a
+**separate object living inside** the context.
+
+This is **"favor composition over inheritance"** in action.
+
+**Relationship 3 — Inheritance (superclass → subclasses).**
+
+The subclasses **extend** the superclass.
+
+**Meaning:** inheritance is *still used*, but **only for the parts that
+genuinely belong to the type hierarchy** (like `display()`). The varying
+behavior is NOT inherited — it's composed.
+
+This is the hybrid: **inheritance for stable structure, composition for
+varying behavior.**
+
+### The delegation flow
+
+1. Someone calls `subclass.performBehavior()`
+2. `performBehavior()` (inherited from the superclass) runs
+3. It delegates: `behavior.doAlgorithm()`
+4. The concrete strategy object runs its own `doAlgorithm()`
+5. The result comes back — the subclass never knew *which* algorithm ran
+
+### Generic class diagram
+
+```mermaid
+classDiagram
+    %% =========================
+    %% Strategy Interface
+    %% =========================
+    class AlgorithmInterface {
+        <<interface>>
+        +doAlgorithm()
+    }
+
+    %% =========================
+    %% Concrete Strategies
+    %% =========================
+    class AlgorithmImpl_1 {
+        +doAlgorithm()
+    }
+
+    class AlgorithmImpl_2 {
+        +doAlgorithm()
+    }
+
+    AlgorithmInterface <|.. AlgorithmImpl_1
+    AlgorithmInterface <|.. AlgorithmImpl_2
+
+    %% =========================
+    %% Context (Superclass)
+    %% =========================
+    class Superclass {
+        -AlgorithmInterface behavior
+        +setBehavior()
+        +performBehavior()
+    }
+
+    Superclass o-- AlgorithmInterface : behavior
+
+    %% =========================
+    %% Subclasses
+    %% =========================
+    class Subclass1
+
+    class Subclass2
+
+    Superclass <|-- Subclass1
+    Superclass <|-- Subclass2
+```
+
+### Duck-specific class diagram
+
+```mermaid
+classDiagram
+    %% =========================
+    %% Interfaces
+    %% =========================
+    class FlyBehavior {
+        <<interface>>
+        +fly()
+    }
+
+    class QuackBehavior {
+        <<interface>>
+        +quack()
+    }
+
+    %% =========================
+    %% Fly behaviors
+    %% =========================
+    class FlyWithWings {
+        +fly()
+    }
+
+    class FlyNoWay {
+        +fly()
+    }
+
+    class FlyRocketPowered {
+        +fly()
+    }
+
+    %% =========================
+    %% Quack behaviors
+    %% =========================
+    class Quack {
+        +quack()
+    }
+
+    class Squeak {
+        +quack()
+    }
+
+    class MuteQuack {
+        +quack()
+    }
+
+    %% =========================
+    %% Duck
+    %% =========================
+    class Duck {
+        -flyBehavior : FlyBehavior
+        -quackBehavior : QuackBehavior
+        +setFlyBehavior(fb : FlyBehavior)
+        +setQuackBehavior(qb : QuackBehavior)
+        +performFly()
+        +performQuack()
+        +swim()
+        +display()
+    }
+
+    %% =========================
+    %% Duck subclasses
+    %% =========================
+    class MallardDuck {
+        +display()
+    }
+
+    class RedheadDuck {
+        +display()
+    }
+
+    class RubberDuck {
+        +display()
+    }
+
+    class DecoyDuck {
+        +display()
+    }
+
+    %% =========================
+    %% Relationships
+    %% =========================
+    FlyBehavior <|.. FlyWithWings
+    FlyBehavior <|.. FlyNoWay
+    FlyBehavior <|.. FlyRocketPowered
+
+    QuackBehavior <|.. Quack
+    QuackBehavior <|.. Squeak
+    QuackBehavior <|.. MuteQuack
+
+    Duck o-- FlyBehavior
+    Duck o-- QuackBehavior
+
+    Duck <|-- MallardDuck
+    Duck <|-- RedheadDuck
+    Duck <|-- RubberDuck
+    Duck <|-- DecoyDuck
+```
+
+### The pattern is a reusable shape
+
+The **names change, the structure never does.** That's the power of a pattern
+— it's a reusable *shape*.
+
+| Generic skeleton | Duck version | Payment version | Navigation version |
+|---|---|---|---|
+| AlgorithmInterface | FlyBehavior | PaymentStrategy | RouteStrategy |
+| AlgorithmImpl_1 | FlyWithWings | CreditCardPayment | DrivingRoute |
+| AlgorithmImpl_2 | FlyNoWay | PayPalPayment | WalkingRoute |
+| Superclass | Duck | Checkout | Navigator |
+| setBehavior() | setFlyBehavior() | setPaymentMethod() | setRouteStrategy() |
+| performBehavior() | performFly() | processPayment() | buildRoute() |
+
+### The one-sentence summary of the structure
+
+> **A context holds a strategy through an interface (composition), delegates to
+> it, and can swap it at runtime — while concrete strategies implement that
+> interface independently, and the context's subclasses inherit only the stable
+> structure.**
+
+---
+
+_Status: documented after our discussion of lectures 2.6–2.7. Next lecture:
+**2.8 — Why HAS-A is better than IS-A** (the last conceptual lecture before we
+dive into the Java code and TypeScript implementation)._
