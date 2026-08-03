@@ -1071,6 +1071,23 @@ This is the design principle that *powers* Strategy. Every pattern we'll learn
 in this course uses some form of "favor composition over inheritance" —
 Strategy just makes it the most visible.
 
+<!-- ================================================================ -->
+<!-- ============ CONCEPTUAL PART ENDS / CODE PART BEGINS ============ -->
+<!-- ================================================================ -->
+
+---
+
+# ════════════════════════════════════════════════════════════════
+# ███  PART 2 — CODE: UNDERSTANDING & IMPLEMENTATION  ███
+# ════════════════════════════════════════════════════════════════
+
+> **What's above this line:** the *concepts* (what the pattern is, why it
+> exists, the principles behind it, the class diagrams).
+>
+> **What's below this line:** the *code* (reading the Java exercise, the
+> TypeScript translation decisions, and the TypeScript implementation in the
+> sandbox).
+
 ---
 
 ## 9. Phase 1 — Understanding the Java exercise code
