@@ -1894,6 +1894,200 @@ defaults.
 
 ---
 
-_Status: Phase 2 (translation decisions) documented. Next: **Phase 3 — writing
-the TypeScript code in the sandbox** (faithful translation first, then
-idiomatic refactor)._
+## 11. Phase 3 — Writing the TypeScript code in the sandbox
+
+We implemented the Strategy pattern twice in the sandbox:
+- **faithful/** (`sandbox/02-strategy/`) — a direct, line-by-line Java
+  translation (classes for everything, `interface` contracts).
+- **idiomatic/** (`sandbox/02-strategy/idiomatic/`) — a TypeScript-native
+  refactor (single-method strategies become function types).
+
+Both compile cleanly and produce identical output.
+
+### File structure
+
+```
+faithful/ (02-strategy/)
+├── interfaces.ts      ← FlyBehavior, QuackBehavior (interfaces)
+├── fly-behaviors.ts   ← FlyWithWings, FlyNoWay, FlyRocketPowered (classes)
+├── quack-behaviors.ts ← Quack, Squeak, MuteQuack (classes)
+├── duck.ts            ← abstract Duck (constructor param properties)
+├── ducks.ts           ← MallardDuck, RedheadDuck, RubberDuck, DecoyDuck
+└── simulator.ts       ← runs all ducks + runtime behavior change
+
+idiomatic/
+├── behaviors.ts       ← FlyBehavior, QuackBehavior (function types)
+├── fly-behaviors.ts   ← flyWithWings, flyNoWay, flyRocketPowered (const fns)
+├── quack-behaviors.ts ← quack, squeak, muteQuack (const fns)
+├── duck.ts            ← abstract Duck (calls field() directly)
+├── ducks.ts           ← 4 subclasses (pass fn refs, no new)
+└── simulator.ts
+```
+
+Run either simulator:
+```bash
+npm run start -- 02-strategy/simulator.ts           # faithful
+npm run start -- 02-strategy/idiomatic/simulator.ts # idiomatic
+```
+
+### What the faithful translation looks like
+
+```ts
+// interfaces.ts — the contracts
+export interface FlyBehavior  { fly(): void; }
+export interface QuackBehavior { quack(): void; }
+
+// fly-behaviors.ts — concrete behaviors as classes
+export class FlyWithWings implements FlyBehavior {
+  fly(): void { console.log("I am flying with wings"); }
+}
+export class FlyNoWay implements FlyBehavior {
+  fly(): void { console.log("I can't fly"); }
+}
+export class FlyRocketPowered implements FlyBehavior {
+  fly(): void { console.log("I am flying with a rocket"); }
+}
+
+// duck.ts — the abstract context
+export abstract class Duck {
+  constructor(
+    private flyBehavior: FlyBehavior,
+    private quackBehavior: QuackBehavior,
+  ) {}
+  abstract display(): void;
+  performFly(): void { this.flyBehavior.fly(); }
+  performQuack(): void { this.quackBehavior.quack(); }
+  swim(): void { console.log("All ducks float, even decoys!"); }
+  setFlyBehavior(fb: FlyBehavior): void { this.flyBehavior = fb; }
+  setQuackBehavior(qb: QuackBehavior): void { this.quackBehavior = qb; }
+}
+
+// ducks.ts — concrete ducks (constructor injection)
+export class MallardDuck extends Duck {
+  constructor() { super(new FlyWithWings(), new Quack()); }
+  override display(): void { console.log("I'm a Mallard Duck"); }
+}
+export class RubberDuck extends Duck {
+  constructor(
+    flyBehavior?: FlyBehavior,
+    quackBehavior?: QuackBehavior,
+  ) {
+    super(flyBehavior ?? new FlyNoWay(), quackBehavior ?? new Squeak());
+  }
+  override display(): void { console.log("I'm a Rubber Duck"); }
+}
+```
+
+### What the idiomatic refactor looks like
+
+```ts
+// behaviors.ts — the contracts as function types
+export type FlyBehavior  = () => void;
+export type QuackBehavior = () => void;
+
+// fly-behaviors.ts — concrete behaviors as functions
+export const flyWithWings: FlyBehavior = () => {
+  console.log("I'm flying with wings");
+};
+export const flyNoWay: FlyBehavior = () => {
+  console.log("I can't fly");
+};
+export const flyRocketPowered: FlyBehavior = () => {
+  console.log("I am flying with a rocket");
+};
+
+// duck.ts — the abstract context (calls the function directly)
+export abstract class Duck {
+  constructor(
+    private flyBehavior: FlyBehavior,
+    private quackBehavior: QuackBehavior,
+  ) {}
+  abstract display(): void;
+  performFly(): void { this.flyBehavior(); }     // field() not field.fly()
+  performQuack(): void { this.quackBehavior(); }
+  swim(): void { console.log("All ducks float, even decoys!"); }
+  setFlyBehavior(fb: FlyBehavior): void { this.flyBehavior = fb; }
+  setQuackBehavior(qb: QuackBehavior): void { this.quackBehavior = qb; }
+}
+
+// ducks.ts — pass function references, no `new`
+export class MallardDuck extends Duck {
+  constructor() { super(flyWithWings, quack); }
+  override display(): void { console.log("I'm a Mallard Duck"); }
+}
+export class RubberDuck extends Duck {
+  constructor(
+    flyBehavior?: FlyBehavior,
+    quackBehavior?: QuackBehavior,
+  ) {
+    super(flyBehavior ?? flyNoWay, quackBehavior ?? squeak);
+  }
+  override display(): void { console.log("I'm a Rubber Duck"); }
+}
+```
+
+### Side-by-side: what changed, what stayed the same
+
+| Concern | Faithful | Idiomatic |
+|---|---|---|
+| Contract | `interface FlyBehavior { fly(): void }` | `type FlyBehavior = () => void` |
+| Behavior | `class FlyWithWings implements ...` | `const flyWithWings: FlyBehavior = ...` |
+| Call in Duck | `this.flyBehavior.fly()` | `this.flyBehavior()` |
+| Pass to duck | `super(new FlyWithWings(), new Quack())` | `super(flyWithWings, quack)` |
+| Lines per behavior | ~5 | ~3 |
+| `new` keyword | needed | not needed |
+| `implements` | ✅ | ❌ |
+| Inline injection | object literal w/ method | arrow function |
+| Holds state | ✅ class fields | ❌ (closure workaround) |
+| `typecheck` + runtime output | ✅ identical | ✅ identical |
+
+### Key learnings
+
+1. **`import type` vs `import`.** With `verbatimModuleSyntax: true`, interfaces
+   and type aliases must be imported with `import type { FlyBehavior }`.
+   Classes are imported with a plain `import { FlyWithWings }` because they are
+   runtime values (we `new` them).
+
+2. **Import paths end in `.js`.** Even though source files are `.ts`, the import
+   path is `./interfaces.js` (not `.ts`). TypeScript maps `.js` → `.ts` during
+   compilation, so the path is correct for both the compiler and runtime.
+
+3. **`override` on `display()`.** With `noImplicitOverride: true`, overriding an
+   abstract method in a subclass requires the `override` keyword. It's *not*
+   needed on behavior classes (they only `implements` an interface, they don't
+   extend a class).
+
+4. **Constructor parameter properties.** `constructor(private flyBehavior:
+   FlyBehavior)` both declares the field and assigns it in one step — no
+   separate field declaration needed.
+
+5. **`??` (nullish coalescing).** Collapses Java's two RubberDuck constructors
+   into one. `flyBehavior ?? new FlyNoWay()` uses the default only when the
+   argument is `null`/`undefined` (unlike `||`, which also replaces falsy
+   values like `0` and `""`).
+
+6. **Structural typing in action.** The idiomatic simulator passes inline
+   callback functions and object literals as behaviors — no class, no
+   `implements`, no `new`. TypeScript accepts anything with the right shape.
+
+### The core Strategy payoff demonstrated
+
+```ts
+// A RubberDuck starts off unable to fly:
+rubber.performFly();                        // → "I can't fly"
+
+// Swap its strategy at runtime with the setter:
+rubber.setFlyBehavior(flyRocketPowered);
+rubber.performFly();                        // → "I am flying with a rocket"
+```
+
+The duck object never changes class — only its behavior strategy. This is
+**encapsulate what varies** plus **program to an interface**: the context
+(`Duck`) is decoupled from the concrete strategies, so behaviors are
+interchangeable at runtime without subclassing.
+
+---
+
+_Status: Phase 3 (TypeScript implementation, faithful + idiomatic) documented.
+Next: **Chapter 1 — Design Patterns Overview**, or a refactor of the
+Strategy code._
