@@ -1441,5 +1441,459 @@ We now understand the complete Java Strategy implementation:
 
 ---
 
-_Status: Phase 1 (understanding the Java code) documented. Next: **Phase 2 —
-Java → TypeScript translation decisions**._
+## 10. Phase 2 — Java → TypeScript translation decisions
+
+Before writing any TypeScript code, we made **5 key decisions** about how to
+translate the Java Strategy implementation. Each decision is documented below
+with the reasoning and the TypeScript-specific capabilities involved.
+
+### Summary of all 5 decisions
+
+| # | Decision | Faithful translation | Idiomatic refactor |
+|---|---|---|---|
+| 1 | Contracts | `interface FlyBehavior` | `type FlyBehavior = () => void` |
+| 2 | Behaviors | Classes with `implements` | Function constants |
+| 3 | Fields | `private` + setters | `private` + constructor injection |
+| 4 | Duck | `abstract class Duck` | Same |
+| 5 | Constructors | Optional params + `??` | Always inject |
+
+---
+
+### Decision 1 — `interface` vs `type` for strategy contracts
+
+In Java, we wrote:
+```java
+public interface FlyBehavior {
+    public void fly();
+}
+```
+
+In TypeScript, we have two ways to express this same contract.
+
+**`interface` (OOP-native):**
+```ts
+interface FlyBehavior {
+  fly(): void;
+}
+```
+
+**`type` (general):**
+```ts
+type FlyBehavior = {
+  fly(): void;
+};
+```
+
+#### What is a TypeScript `interface`?
+
+A `interface` is a **named contract for object shapes**. Key characteristics:
+
+1. **Structural (not nominal).** Unlike Java, TypeScript doesn't care whether a
+class declares `implements FlyBehavior`. If the class has a `fly(): void`
+method, it's automatically compatible. The **shape** matters, not the name.
+
+```ts
+interface FlyBehavior {
+  fly(): void;
+}
+
+class FlyWithWings {            // ← no "implements FlyBehavior"!
+  fly(): void {
+    console.log("I'm flying!!");
+  }
+}
+
+const flyer: FlyBehavior = new FlyWithWings();  // ✅ works anyway
+```
+
+2. **Erased at runtime.** After compilation, `interface FlyBehavior` produces
+**zero output** — purely for type-checking. This is why structural typing works:
+there's no object to look up at runtime.
+
+3. **Open for declaration merging.** Two `interface` declarations with the same
+name get **merged**:
+```ts
+interface Duck { swim(): void; }
+interface Duck { display(): void; }
+// Duck now has both swim() and display()
+```
+
+4. **`implements` is optional but useful.** Declaring `class X implements Y`
+makes the compiler *check* that X satisfies Y. Without it, X is still
+assignable to Y if its shape fits.
+
+#### What is a TypeScript `type`?
+
+A `type` (type alias) is a **name for any type** — not just object shapes.
+Key characteristics:
+
+1. **More general.** Can describe things an `interface` can't:
+```ts
+type ID = string | number;              // union
+type Callback<T> = (data: T) => void;   // function type
+type Pair = [string, number];           // tuple
+```
+
+2. **Also erased at runtime.**
+
+3. **Cannot be merged.** Two `type` declarations with the same name = error.
+
+4. **`implements` works but is unusual.**
+
+#### Side-by-side comparison
+
+| Feature | `interface` | `type` |
+|---|---|---|
+| Describes object shapes | ✅ | ✅ |
+| Erased at runtime | ✅ | ✅ |
+| Can use `implements` | ✅ (natural) | ⚠️ (unusual) |
+| Declaration merging | ✅ | ❌ |
+| Unions, tuples, function types | ❌ | ✅ |
+| Extending other types | `extends` | `&` intersection |
+| Best for OOP contracts | ✅ | ⚠️ OK |
+| Best for function types | ❌ | ✅ |
+
+#### Decision
+
+> **Use `interface` for the faithful translation** — it's the natural OOP
+> construct for a contract between classes, reads naturally with `implements`,
+> and is exactly what `interface` is designed for.
+>
+> For the idiomatic refactor, a single-method strategy becomes a **function
+type** using `type` (`type FlyBehavior = () => void`). Covered in Decision 2.
+
+---
+
+### Decision 2 — Classes vs. function types for concrete behaviors
+
+This is the **biggest decision** — where TypeScript differs most from Java.
+
+#### The Java way (classes for everything)
+
+```java
+public class FlyWithWings implements FlyBehavior {
+    public void fly() {
+        System.out.println("I'm flying!!");
+    }
+}
+```
+
+Even for a one-liner, Java forces you to write a whole class. The only
+shortcut is a **lambda** for functional interfaces:
+```java
+quackBehavior = () -> System.out.println("Squeak");
+```
+
+#### Approach A — Classes (faithful translation)
+
+```ts
+class FlyWithWings implements FlyBehavior {
+  fly(): void {
+    console.log("I'm flying!!");
+  }
+}
+```
+
+Same structure as Java. When assigning: `this.setFlyBehavior(new FlyWithWings())`.
+
+#### Approach B — Function types (idiomatic TypeScript)
+
+Since each strategy has **one method**, we can replace the interface with a
+**function type**:
+```ts
+type FlyBehavior = () => void;
+```
+
+Then each behavior becomes a **simple function** — no class:
+```ts
+const flyWithWings: FlyBehavior = () => {
+  console.log("I'm flying!!");
+};
+```
+
+When assigning: `this.setFlyBehavior(flyWithWings)` — no `new`.
+
+#### What changed?
+
+| | Class (faithful) | Function type (idiomatic) |
+|---|---|---|
+| Contract | `interface FlyBehavior { fly(): void }` | `type FlyBehavior = () => void` |
+| Behavior | `class FlyWithWings implements FlyBehavior` | `const flyWithWings: FlyBehavior` |
+| Assigning | `new FlyWithWings()` | `flyWithWings` (no `new`) |
+| Lines per behavior | ~5 | ~3 |
+| `implements` keyword | ✅ | ❌ |
+| Supports state | ✅ | ❌ |
+| Supports multiple methods | ✅ | ❌ |
+
+#### When does Approach B work?
+
+It works when the strategy has:
+- ✅ **One method only** (like `fly()` or `quack()`)
+- ✅ **No state** (no fields, just behavior)
+
+It does NOT work when the strategy needs:
+- ❌ **Multiple methods** (you need an interface)
+- ❌ **State** (you need a class to hold fields)
+
+For our ducks, `fly()` and `quack()` are both single-method, stateless
+strategies — so the function-type approach is **perfect**.
+
+#### Decision
+
+> **Faithful translation:** use **classes** (Approach A).
+> **Idiomatic refactor:** use **function types** (Approach B).
+> We'll build both in Phase 3.
+
+---
+
+### Decision 3 — Private fields and encapsulation
+
+#### The Java way (package-private)
+
+```java
+public abstract class Duck {
+    FlyBehavior flyBehavior;       // ← no modifier = package-private
+    QuackBehavior quackBehavior;   // ← no modifier = package-private
+```
+
+In Java, no access modifier means **package-private** — any class in the same
+package can access these fields directly. This lets subclasses do:
+```java
+flyBehavior = new FlyWithWings();   // direct field access
+```
+
+**This is a design smell.** Two inconsistencies:
+
+1. Some ducks use direct access (`flyBehavior = new FlyWithWings()`), some use
+   setters (`setFlyBehavior(new FlyNoWay())`).
+2. External code could bypass setters: `duck.flyBehavior = new FlyNoWay()`.
+
+#### The TypeScript way — three options
+
+**Option A — `private` keyword (compile-time privacy):**
+```ts
+abstract class Duck {
+  private flyBehavior: FlyBehavior;
+  private quackBehavior: QuackBehavior;
+}
+```
+- TypeScript compiler **errors** if you access the field from outside the class
+  — including from subclasses.
+- Forces subclasses to use the setters.
+
+**Option B — `#` private fields (runtime privacy, ES2022+):**
+```ts
+abstract class Duck {
+  #flyBehavior: FlyBehavior;
+  #quackBehavior: QuackBehavior;
+}
+```
+- Truly inaccessible — even at runtime in JavaScript.
+- Strongest encapsulation. Different syntax (`this.#flyBehavior`).
+
+**Option C — `protected` (accessible to subclasses):**
+```ts
+abstract class Duck {
+  protected flyBehavior: FlyBehavior;
+  protected quackBehavior: QuackBehavior;
+}
+```
+- Subclasses CAN access directly (like Java's package-private).
+- External code CANNOT access.
+- Closest to the Java behavior.
+
+#### Comparison
+
+| Option | Subclass access? | External access? | Encapsulation | Matches Java? |
+|---|---|---|---|---|
+| `private` | ❌ must use setters | ❌ no | Strongest | No (better) |
+| `#` private | ❌ must use setters | ❌ no | Strongest (runtime) | No (better) |
+| `protected` | ✅ direct field access | ❌ no | Medium | Closest |
+
+#### Decision
+
+> **Use `private` for the faithful translation.**
+
+Why? Because it **forces consistency** — every subclass must use the setters.
+No more "some use direct access, some use setters." This is actually **better
+design** than the Java code, which was inconsistent.
+
+---
+
+### Decision 4 — Abstract class for Duck
+
+#### The Java way
+
+```java
+public abstract class Duck {
+    abstract void display();
+}
+```
+
+`Duck` is abstract — can't instantiate it. `display()` is abstract — subclasses
+must implement it.
+
+#### The TypeScript way (identical)
+
+```ts
+abstract class Duck {
+  abstract display(): void;
+}
+```
+
+Works identically to Java:
+- ❌ `new Duck()` → compiler error
+- ✅ Subclasses must implement `display()` or be abstract too
+- ✅ Abstract classes CAN have concrete methods (`performFly`, `swim`)
+
+#### Alternative (worse) — regular class + throw
+
+```ts
+class Duck {
+  display(): void {
+    throw new Error("display() must be implemented by subclass");
+  }
+}
+```
+
+| | `abstract class` | Regular class + throw |
+|---|---|---|
+| `new Duck()` blocked at | compile time ✅ | runtime ❌ |
+| Forgets to implement `display()` | compile error ✅ | runtime error ❌ |
+
+With `abstract`, the compiler catches missing implementations **before the
+program runs**. With the throw approach, it's a **silent bug**.
+
+#### Decision
+
+> **Use `abstract class Duck` with `abstract display(): void`.** Direct 1:1
+> translation — TypeScript's abstract classes work exactly like Java's.
+
+---
+
+### Decision 5 — Constructors and dependency injection
+
+#### The Java way (constructor overloading)
+
+`RubberDuck` has **two constructors**:
+```java
+public RubberDuck() {                          // default — hardcodes behaviors
+    flyBehavior = new FlyNoWay();
+    quackBehavior = () -> System.out.println("Squeak");
+}
+public RubberDuck(FlyBehavior flyBehavior, QuackBehavior quackBehavior) {
+    this.flyBehavior = flyBehavior;             // injected
+    this.quackBehavior = quackBehavior;
+}
+```
+
+Java supports constructor overloading — multiple constructors with different
+parameter lists.
+
+#### The TypeScript way (optional parameters + `??`)
+
+TypeScript constructor overloading is clunky. Instead, use **optional
+parameters with defaults**:
+
+```ts
+class RubberDuck extends Duck {
+  constructor(
+    flyBehavior?: FlyBehavior,
+    quackBehavior?: QuackBehavior,
+  ) {
+    super();
+    this.setFlyBehavior(flyBehavior ?? new FlyNoWay());
+    this.setQuackBehavior(quackBehavior ?? new Squeak());
+  }
+}
+```
+
+**What's happening:**
+- Both parameters have `?` — they're **optional**.
+- `??` (nullish coalescing) means: use the provided value if it exists,
+  otherwise use the default.
+
+**Usage:**
+```ts
+// No args → uses defaults:
+const rubber1 = new RubberDuck();
+
+// With args → uses injected behaviors:
+const rubber2 = new RubberDuck(new FlyNoWay(), new MuteQuack());
+```
+
+**One constructor replaces Java's two.**
+
+#### What is `??` (nullish coalescing)?
+
+```ts
+this.setFlyBehavior(flyBehavior ?? new FlyNoWay());
+```
+
+Reads as: *"use `flyBehavior` if it has a value, otherwise use `new FlyNoWay()`"*.
+
+Only checks for `null` and `undefined`:
+```ts
+const value = providedValue ?? defaultValue;
+// If providedValue is "something" → uses "something"
+// If providedValue is null        → uses defaultValue
+// If providedValue is undefined   → uses defaultValue
+```
+
+**Important:** `??` is different from `||` (logical OR):
+```ts
+// ?? only checks for null/undefined:
+0 ?? "default"   // → 0
+"" ?? "default"   // → ""
+
+// || checks for any falsy value:
+0 || "default"    // → "default"
+"" || "default"   // → "default"
+```
+
+For our ducks, `??` is the right choice — we only want to use the default when
+the parameter is truly absent (`undefined`), not when it's some falsy value.
+
+#### Alternative — always inject (no defaults)
+
+```ts
+class Duck {
+  constructor(
+    private flyBehavior: FlyBehavior,
+    private quackBehavior: QuackBehavior,
+  ) {}
+}
+```
+
+Every duck is created with explicit behaviors:
+```ts
+const mallard = new MallardDuck(new FlyWithWings(), new Quack());
+```
+
+**Pros:** maximum flexibility, easier to test (mock behaviors), no hidden
+defaults.
+**Cons:** more verbose at the call site, every `new` requires arguments.
+
+#### Comparison
+
+| | Java (2 constructors) | TS optional + `??` | TS always inject |
+|---|---|---|---|
+| Constructors needed | 2 | 1 | 1 |
+| Defaults supported | ✅ | ✅ (via `??`) | ❌ |
+| Flexibility | medium | high | highest |
+| Convenience | ✅ | ✅ | ❌ |
+| Testability | medium | medium | ✅ best |
+
+#### Decision
+
+> **Faithful translation:** use **optional parameters + `??` defaults** — one
+> constructor that replaces Java's two.
+>
+> **Idiomatic refactor:** consider **always inject** (no defaults) for maximum
+> testability.
+
+---
+
+_Status: Phase 2 (translation decisions) documented. Next: **Phase 3 — writing
+the TypeScript code in the sandbox** (faithful translation first, then
+idiomatic refactor)._
