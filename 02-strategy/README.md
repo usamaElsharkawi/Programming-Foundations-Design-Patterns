@@ -2088,6 +2088,6 @@ interchangeable at runtime without subclassing.
 
 ---
 
-_Status: Phase 3 (TypeScript implementation, faithful + idiomatic) documented.
-Next: **Chapter 1 — Design Patterns Overview**, or a refactor of the
-Strategy code._
+_Status: The Strategy pattern is complete (Java understanding + TS translation
+decisions + faithful & idiomatic implementations, all documented).
+Next: **Chapter 3 — The Adapter Pattern**._
