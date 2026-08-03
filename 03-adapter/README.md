@@ -1,7 +1,7 @@
 # Section 3 — The Adapter Pattern
 
-> _Documented after our discussion of lectures 3.1 (Understanding the Adapter
-> pattern) and 3.2 (The Adapter pattern defined)._
+> _Documented after our discussion of lecture 3.1 (Understanding the Adapter
+> pattern)._
 
 ---
 
@@ -54,43 +54,5 @@ interface later, only the adapter changes.
 
 ---
 
-## 2. Lecture 3.2 — The Adapter pattern defined
-
-### Takeaways (from the video)
-
-- The Adapter pattern enables two classes with incompatible interfaces to work
-  together by introducing an Adapter class that translates calls from the
-  client to the adapted class.
-- It allows you to use a new or different class (**Adaptee**) without changing
-  the existing system's expected interface (**Target**).
-- This pattern helps keep software flexible and resilient to change by
-  isolating interface differences within the Adapter, making integration
-  smoother.
-
-### The formal vocabulary
-
-The second lecture gives the pattern its **official terms**:
-
-| Term | What it is | In the duck/turkey example |
-|---|---|---|
-| **Target** | The interface the client expects | `Duck` |
-| **Adaptee** | The new/different class you want to use | `Turkey` |
-| **Adapter** | Translates client → adaptee | `TurkeyAdapter` |
-| **Client** | Code that uses the Target; unaware of the Adaptee | `testDuck` |
-
-### Connecting the two lectures
-
-Lecture 3.1 showed *why* (flexibility, isolation of change). Lecture 3.2 gives
-it *a name and structure* (Target, Adaptee, Adapter). Together:
-
-> **The Adapter lets a client use an Adaptee through the Target's interface,
-> by wrapping the Adaptee and translating every call — so neither the client
-> nor the existing system code ever has to change.**
-
-This is especially useful when integrating third-party libraries or evolving a
-codebase without breaking existing functionality.
-
----
-
-_Status: Lectures 3.1 & 3.2 discussion documented. Next: lecture 3.3 (Using
-the Adapter pattern — the Java code), then the TypeScript translation._
+_Status: Lecture 3.1 documented. Next: **discuss lecture 3.2 (The Adapter
+pattern defined)** together._
