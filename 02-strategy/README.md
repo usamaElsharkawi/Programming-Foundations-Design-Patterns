@@ -897,6 +897,182 @@ The **names change, the structure never does.** That's the power of a pattern
 
 ---
 
-_Status: documented after our discussion of lectures 2.6–2.7. Next lecture:
-**2.8 — Why HAS-A is better than IS-A** (the last conceptual lecture before we
-dive into the Java code and TypeScript implementation)._
+## 8. Why HAS-A is better than IS-A
+
+> Course module: **Why HAS-A is better than IS-A** (2.8)
+
+### The core claim
+
+> **Favor composition (HAS-A) over inheritance (IS-A).**
+
+This is the **third design principle** (alongside "encapsulate what varies" and
+"program to an interface"). It's the principle that the entire Strategy pattern
+is built on.
+
+### What IS-A and HAS-A actually mean
+
+**IS-A (inheritance):**
+
+```
+MallardDuck IS-A Duck
+```
+
+The subclass **is** the superclass. It inherits everything — methods, fields,
+the whole identity. The relationship is permanent and total. `MallardDuck` can
+never stop being a `Duck`.
+
+**HAS-A (composition):**
+
+```
+Duck HAS-A FlyBehavior
+```
+
+The object **holds** another object. It contains it as a field. The relationship
+is flexible and partial. `Duck` can swap its `FlyBehavior` for a different one
+at any time — it can even have *no* fly behavior.
+
+### Why composition wins — five reasons
+
+**Reason 1 — Behaviors can be reused across unrelated classes.**
+
+With inheritance, a behavior is **trapped inside a class hierarchy**. `fly()`
+lives in `Duck`, so only ducks can use it. If you later build a `Bird` class,
+an `Airplane` class, or a `Superhero` class, they **can't share** the flying
+logic without duplicating code or creating a weird common ancestor.
+
+With composition, a behavior is a **free-standing object**. `FlyWithWings` is
+just a class. *Any* object can hold it — a duck, a bird, a superhero, a drone.
+The behavior doesn't know or care who's using it.
+
+```
+Duck       ──holds──►  FlyWithWings  ◄──holds──  Superhero
+Bird       ──holds──┘                    └──holds──  Drone
+```
+
+> **Composition makes behaviors reusable across the entire codebase, not just
+> within one inheritance tree.**
+
+**Reason 2 — You can change behavior at runtime.**
+
+With inheritance, behavior is decided at **class-definition time** (compile
+time). A `MallardDuck` flies because it *is* a `MallardDuck` — baked into its
+type forever. To change behavior, you'd have to instantiate a *different class*.
+
+With composition, behavior is decided at **object-run time** (runtime). The duck
+holds a `FlyBehavior` field, and you can swap what's in that field whenever you
+want:
+
+```
+duck.setFlyBehavior(new FlyWithWings());      // fly with wings
+// ... later in the program ...
+duck.setFlyBehavior(new FlyRocketPowered());   // now fly with rockets
+```
+
+The duck object **stays the same object** — only its behavior changes. This is
+the model duck getting a rocket moment from the simulator.
+
+> **Composition enables runtime flexibility — inheritance is locked at compile
+> time.**
+
+**Reason 3 — Delegation instead of duplication.**
+
+With inheritance, if 6 subclasses need the same behavior, they **all inherit
+it** — wanted or not. To *not* have the behavior, they override to no-op (the
+"disabling" smell we saw in 2.1).
+
+With composition, the behavior is **delegated**. The context says *"I don't know
+how to fly, but I know someone who does"* and hands the call to its
+`FlyBehavior` object:
+
+```
+performFly() → flyBehavior.fly()   // delegation, not inheritance
+```
+
+- The context doesn't duplicate the behavior.
+- The context doesn't fight to disable unwanted behavior.
+- Each behavior exists in **exactly one place**.
+
+> **Composition uses delegation — one behavior, one home, reused by anyone who
+> holds it.**
+
+**Reason 4 — You're not forced to take everything.**
+
+Inheritance is **all-or-nothing**. When `MallardDuck extends Duck`, it
+inherits `swim()`, `quack()`, `fly()`, and *every* future method added to
+`Duck` — whether it wants them or not.
+
+Composition is **à la carte**. The duck holds exactly the behaviors it needs:
+
+```
+duck has:  FlyBehavior  +  QuackBehavior   (exactly these two)
+```
+
+If you build a duck that doesn't need quacking, it simply doesn't hold a
+`QuackBehavior`. No override-to-disable, no fighting the base class.
+
+> **Composition lets you take only what you need — inheritance forces the whole
+> package.**
+
+**Reason 5 — Changes stay local.**
+
+When you change a composed behavior (e.g., `FlyWithWings` now logs a message),
+only `FlyWithWings` changes. Every object that holds it gets the update
+**automatically** — but nothing else is touched.
+
+When you change an inherited behavior (e.g., `Duck.fly()`), it **ripples to
+every descendant** — the mallard, the redhead, the rubber duck, the decoy. You
+have to audit them all.
+
+> **Composition localizes changes — inheritance spreads them.**
+
+### The full comparison
+
+| | IS-A (Inheritance) | HAS-A (Composition) |
+|---|---|---|
+| Behavior reuse | only within the same hierarchy | across the entire codebase |
+| When behavior is decided | compile time (class definition) | runtime (swap the field) |
+| Mechanism | inherit + override | delegate to a held object |
+| Flexibility | all-or-nothing (inherit everything) | à la carte (hold only what you need) |
+| Change impact | ripples to all descendants | stays local to the one behavior |
+| Coupling | tight (permanently bound) | loose (swap freely) |
+
+### How this maps to our duck design
+
+**Before (IS-A):**
+
+```
+Duck
+  ├── fly()        ← inherited by ALL ducks (rubber duck gets it too!)
+  ├── quack()      ← inherited by ALL ducks
+  └── swim()
+```
+
+**After (HAS-A):**
+
+```
+Duck
+  ├── flyBehavior : FlyBehavior     ← holds a flying object (swappable)
+  ├── quackBehavior : QuackBehavior ← holds a quacking object (swappable)
+  └── swim()                         ← only the truly stable stuff is inherited
+```
+
+The **only** thing still inherited is `swim()` (universal, never varies) and the
+behavior *fields* (which are empty slots to be filled). The *varying* behaviors
+are now **composed**, not inherited.
+
+### The principle in one line
+
+> **HAS-A is better than IS-A because composing behaviors as swappable objects
+> gives you reuse across the codebase, runtime flexibility, and localized
+> changes — while inheritance locks you into a rigid, compile-time,
+> all-or-nothing hierarchy.**
+
+This is the design principle that *powers* Strategy. Every pattern we'll learn
+in this course uses some form of "favor composition over inheritance" —
+Strategy just makes it the most visible.
+
+---
+
+_Status: documented after our discussion of lecture 2.8. The conceptual part of
+the Strategy chapter is complete. Next: **understanding the Java exercise code
+together, then implementing it in TypeScript** in the sandbox._
