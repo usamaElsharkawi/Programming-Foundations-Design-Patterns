@@ -2,7 +2,7 @@
 
 > _Documented after our discussion of lectures 5.1 (Creating chaos with
 > inheritance), 5.2 (Understanding the open-closed principle), and 5.4
-> (Understanding the Decorator pattern)._
+> (Understanding the Decorator pattern), plus the TypeScript implementation._
 
 ---
 
@@ -430,6 +430,162 @@ value themselves.
 
 ---
 
-_Status: Lectures 5.1, 5.2 & 5.4 documented. Next: **lecture 5.5 (Using the
-Decorator pattern — the Java StarbuzzCoffee code)**, then the TypeScript
-translation._
+## 4. The TypeScript implementation
+
+The pattern is implemented in `sandbox/05-decorator/`. All files compile
+cleanly and the StarbuzzCoffee client runs end-to-end, matching the Java
+output exactly.
+
+### File structure
+
+```
+sandbox/05-decorator/
+├── beverage.ts         ← Beverage (Component) + CondimentDecorator (Decorator base)
+├── coffees.ts          ← HouseBlend, DarkRoast, Decaf, Espresso (ConcreteComponents)
+├── condiments.ts       ← Mocha, Milk, Soy, Whip (ConcreteDecorators)
+└── starbuzz-coffee.ts  ← the client (builds drinks by wrapping at runtime)
+```
+
+Run it:
+```bash
+npm run start -- 05-decorator/starbuzz-coffee.ts
+```
+
+### `beverage.ts` — the Component and the Decorator base
+
+```ts
+/** COMPONENT — the base type for beverages AND decorators. */
+export abstract class Beverage {
+  protected description: string = "Unknown Beverage";
+
+  getDescription(): string {
+    return this.description;
+  }
+
+  abstract cost(): number;
+}
+
+/** DECORATOR BASE — pins the type so condiments can nest. */
+export abstract class CondimentDecorator extends Beverage {
+  abstract override getDescription(): string;
+}
+```
+
+- `Beverage` is the **Component**: concrete beverages implement `cost()`, and
+  decorators extend it so everything shares one type (IS-A → nestable).
+- `CondimentDecorator extends Beverage` re-declares `getDescription()` as
+  abstract, forcing every condiment to implement it. It does NOT hold a
+  beverage — each concrete decorator adds that (HAS-A) itself.
+
+### `coffees.ts` — the ConcreteComponents
+
+```ts
+export class HouseBlend extends Beverage {
+  constructor() {
+    super();
+    this.description = "House Blend Coffee";  // ← sets its own name
+  }
+  cost(): number { return 0.89; }             // ← sets its own price
+}
+```
+
+Each base beverage just fixes its description and cost. None of them know about
+the condiments — open-closed: the bases never change when a new condiment is
+added.
+
+### `condiments.ts` — the ConcreteDecorators (the key file)
+
+```ts
+export class Mocha extends CondimentDecorator {
+  constructor(private beverage: Beverage) {  // ← HAS-A: wraps a Beverage
+    super();
+  }
+  override getDescription(): string {
+    return this.beverage.getDescription() + ", Mocha";  // add + delegate
+  }
+  override cost(): number {
+    return 0.2 + this.beverage.cost();                  // add + delegate
+  }
+}
+```
+
+Each condiment:
+- extends `CondimentDecorator` (IS-A a Beverage → nestable/interchangeable)
+- wraps a `Beverage` via a **private constructor parameter property** (HAS-A)
+- **adds** its own price/name, then **delegates** to the wrapped beverage
+
+This is the delegation + augmentation mechanism. Each decorator contributes
+its piece and passes the rest down the chain.
+
+### `starbuzz-coffee.ts` — the client
+
+```ts
+let beverage: Beverage = new Espresso();
+console.log(`${beverage.getDescription()} $${beverage.cost()}`);
+
+// Double mocha + whip:
+let beverage2: Beverage = new DarkRoast();
+beverage2 = new Mocha(beverage2);
+beverage2 = new Mocha(beverage2);   // same decorator twice = double mocha
+beverage2 = new Whip(beverage2);
+console.log(`${beverage2.getDescription()} $${beverage2.cost()}`);
+
+// Soy + mocha + whip:
+let beverage3: Beverage = new HouseBlend();
+beverage3 = new Soy(beverage3);
+beverage3 = new Mocha(beverage3);
+beverage3 = new Whip(beverage3);
+console.log(`${beverage3.getDescription()} $${beverage3.cost()}`);
+```
+
+Every beverage is typed as `Beverage` — the client treats a fully-decorated
+drink as just a Beverage (IS-A). The wrapping happens at runtime (composition).
+"Double mocha" is just using the `Mocha` decorator twice — no new class.
+
+### Sample output
+
+```
+Espresso $1.99
+Dark Roast Coffee, Mocha, Mocha, Whip $1.49
+House Blend Coffee, Soy, Mocha, Whip $1.34
+```
+
+Verify the cost math:
+- Espresso: base 1.99 → **1.99**
+- Dark Roast: 0.99 + 0.20 (Mocha) + 0.20 (Mocha) + 0.10 (Whip) = **1.49**
+- House Blend: 0.89 + 0.15 (Soy) + 0.20 (Mocha) + 0.10 (Whip) = **1.34**
+
+### The Delegation chain (how a call unwinds)
+
+For `new Whip(new Mocha(new Mocha(new DarkRoast())))`.cost():
+
+```
+Whip.cost()  = 0.10 + Mocha.cost()
+                    = 0.20 + Mocha.cost()
+                                = 0.20 + DarkRoast.cost()
+                                              = 0.99
+                                = 1.19
+                    = 1.39
+             = 1.49
+```
+
+Each decorator adds its price and hands off to the wrapped object; the base
+stops the chain; results unwind back up.
+
+### TypeScript practices used
+
+| Practice | Where | Why |
+|---|---|---|
+| `abstract class` for Component + Decorator base | `beverage.ts` | Direct mirror of Java; shared type for all beverages/decorators |
+| `protected description` | `beverage.ts` | Subclasses set it (Java's package-private semantics) |
+| `abstract override getDescription()` | `beverage.ts` | Re-declares concrete base method as abstract — with `noImplicitOverride`, `override` is required |
+| Constructor parameter property `constructor(private beverage: Beverage)` | `condiments.ts` | Wraps the beverage AND encapsulates it in one line (HAS-A) |
+| `override` on every overridden method | all files | Required by `noImplicitOverride: true` |
+| `import type` for `Beverage` (used only as a type in client) | `starbuzz-coffee.ts` | `verbatimModuleSyntax`; combined with value imports where needed |
+| Composition over inheritance | `condiments.ts` | Behavior added by wrapping, not subclassing — open-closed |
+
+---
+
+_Status: Lectures 5.1, 5.2 & 5.4 documented + TypeScript implementation in the
+sandbox. Next: the pizza challenge and solution videos (optional deeper
+practice)._
