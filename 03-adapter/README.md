@@ -1,7 +1,7 @@
 # Section 3 — The Adapter Pattern
 
-> _Documented after our discussion of lecture 3.1 (Understanding the Adapter
-> pattern)._
+> _Documented after our discussion of lectures 3.1 (Understanding the Adapter
+> pattern) and 3.2 (The Adapter pattern defined)._
 
 ---
 
@@ -87,11 +87,22 @@ together now, without changing either.
 
 ### The structure (class diagram)
 
-```
-Client ──uses──▶ Target (Duck interface: quack(), fly())
-                     ▲
-                     |  implements
-             TurkeyAdapter ──adapts──▶ Adaptee (WildTurkey: gobble(), fly())
+```mermaid
+classDiagram
+    class Client {
+    }
+    class Target {
+        +request()
+    }
+    class Adapter {
+        +request()
+    }
+    class Adaptee {
+        +specificRequest()
+    }
+    Client o-- Target
+    Adapter --|> Target
+    Adapter o-- Adaptee
 ```
 
 The three connections tell the whole story:
