@@ -165,5 +165,203 @@ notices.
 
 ---
 
-_Status: Lectures 3.1 & 3.2 documented. Next: **lecture 3.3 (Using the Adapter
-pattern — the Java code)**, then the TypeScript translation._
+## 3. The TypeScript implementation
+
+The pattern is implemented in `sandbox/03-adapter/`. All four files compile
+cleanly and the simulator runs end-to-end.
+
+### File structure
+
+```
+sandbox/03-adapter/
+├── interfaces.ts        ← Duck, Turkey, Drone (the contracts)
+├── concrete-classes.ts  ← MallardDuck, WildTurkey, SuperDrone
+├── adapters.ts          ← TurkeyAdapter, DuckAdapter, DroneAdapter
+└── simulator.ts         ← the client (testDuck / testTurkey)
+```
+
+Run it:
+```bash
+npm run start -- 03-adapter/simulator.ts
+```
+
+### `interfaces.ts` — the contracts
+
+Each interface has **more than one method**, so we use `interface` (a function
+type can only describe a single signature):
+
+```ts
+/** TARGET #1 — what the duck-client expects. */
+export interface Duck {
+  quack(): void;
+  fly(): void;
+}
+
+/** ADAPTEE #1 — a Turkey. Note: gobble() ≠ quack(). */
+export interface Turkey {
+  gobble(): void;
+  fly(): void;
+}
+
+/** ADAPTEE #2 (challenge) — a Drone, totally different interface. */
+export interface Drone {
+  beep(): void;
+  spin_rotors(): void;
+  take_off(): void;
+}
+```
+
+### `concrete-classes.ts` — the real objects
+
+None of these know about each other or about any adapter. Each just implements
+its own interface:
+
+```ts
+export class MallardDuck implements Duck {
+  quack(): void { console.log("Quack"); }
+  fly(): void { console.log("I'm flying"); }
+}
+
+export class WildTurkey implements Turkey {
+  gobble(): void { console.log("Gobble gobble"); }
+  fly(): void { console.log("I'm flying a short distance"); }
+}
+
+export class SuperDrone implements Drone {
+  beep(): void { console.log("Beep beep beep"); }
+  spin_rotors(): void { console.log("Rotors are spinning"); }
+  take_off(): void { console.log("Taking off"); }
+}
+```
+
+### `adapters.ts` — the three adapters
+
+Each adapter **implements the Target** and **wraps the Adaptee** (via a private
+constructor parameter property). All translation logic lives inside the
+adapter — the client and the adaptee are never touched.
+
+```ts
+/** ADAPTER #1: Turkey → Duck. quack() renames to gobble(); fly() loops 5×. */
+export class TurkeyAdapter implements Duck {
+  constructor(private turkey: Turkey) {}
+
+  quack(): void {
+    this.turkey.gobble();
+  }
+
+  fly(): void {
+    for (let i = 0; i < 5; i++) {
+      this.turkey.fly();
+    }
+  }
+}
+
+/** ADAPTER #2 (reverse): Duck → Turkey. fly() only fires ~1/5 of the time. */
+export class DuckAdapter implements Turkey {
+  constructor(private duck: Duck) {}
+
+  gobble(): void {
+    this.duck.quack();
+  }
+
+  fly(): void {
+    if (Math.floor(Math.random() * 5) === 0) {
+      this.duck.fly();
+    }
+  }
+}
+
+/** ADAPTER #3 (challenge): Drone → Duck. fly() calls two Drone methods. */
+export class DroneAdapter implements Duck {
+  constructor(private drone: Drone) {}
+
+  quack(): void {
+    this.drone.beep();
+  }
+
+  fly(): void {
+    this.drone.spin_rotors();
+    this.drone.take_off();
+  }
+}
+```
+
+### `simulator.ts` — the client
+
+The client only knows the Target interfaces. It calls `quack()`/`fly()` or
+`gobble()`/`fly()` and never references adapter internals:
+
+```ts
+function testDuck(duck: Duck): void {
+  duck.quack();
+  duck.fly();
+}
+
+function testTurkey(turkey: Turkey): void {
+  turkey.gobble();
+  turkey.fly();
+}
+
+const duck = new MallardDuck();
+const turkey = new WildTurkey();
+const turkeyAdapter: Duck = new TurkeyAdapter(turkey);   // turkey as a duck
+const droneAdapter: Duck = new DroneAdapter(new SuperDrone()); // drone as a duck
+const duckAdapter: Turkey = new DuckAdapter(duck);       // duck as a turkey
+
+testDuck(duck);           // real duck
+testDuck(turkeyAdapter);  // turkey disguised as a duck
+testDuck(droneAdapter);   // drone disguised as a duck
+testTurkey(duckAdapter);  // duck disguised as a turkey
+```
+
+### Sample output
+
+```
+=== Duck Test Drive ===
+
+The Turkey says...
+Gobble gobble
+I'm flying a short distance
+
+The Duck says...
+Quack
+I'm flying
+
+The TurkeyAdapter says...
+Gobble gobble                          ← quack() → gobble()
+I'm flying a short distance            ← fly() looped 5×
+I'm flying a short distance
+I'm flying a short distance
+I'm flying a short distance
+I'm flying a short distance
+
+The DroneAdapter says...
+Beep beep beep                         ← quack() → beep()
+Rotors are spinning                    ← fly() → spin_rotors() + take_off()
+Taking off
+
+=== Turkey Test Drive ===
+
+The DuckAdapter says... (attempt 1)
+Quack                                  ← gobble() → quack()
+I'm flying                             ← fly() fired (random 1/5 chance)
+...
+```
+
+### TypeScript practices used
+
+| Practice | Where | Why |
+|---|---|---|
+| `interface` for multi-method contracts | `interfaces.ts` | A function type can't express 2+ methods |
+| `import type` for interfaces | all files | `verbatimModuleSyntax` requires type-only imports |
+| `constructor(private adaptee: X)` | `adapters.ts` | Declares, assigns, and encapsulates the wrapped object in one line |
+| Adapter `implements Target` | `adapters.ts` | Makes it assignable wherever the Target is expected |
+| Adapter composes Adaptee (has-a) | `adapters.ts` | The "object adapter" — wraps rather than inherits |
+| `: Duck` / `: Turkey` on adapter variables | `simulator.ts` | Documents intent: "this is being used as a Duck/Turkey" |
+| Translation logic confined to the adapter | `adapters.ts` | Client + adaptee stay untouched (the whole point of the pattern) |
+
+---
+
+_Status: Lectures 3.1 & 3.2 documented + TypeScript implementation in the
+sandbox. Next: lecture 3.3 (Using the Adapter pattern), then the challenge
+and solution videos._
