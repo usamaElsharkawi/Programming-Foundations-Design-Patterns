@@ -1,7 +1,8 @@
 # Section 4 — The Observer Pattern
 
 > _Documented after our discussion of lectures 4.1 (Understanding the Observer
-> pattern) and 4.2 (The Observer pattern defined)._
+> pattern), 4.2 (The Observer pattern defined), and 4.4 (loose coupling),
+> plus the TypeScript implementation._
 
 ---
 
@@ -254,5 +255,222 @@ flexible — observers pull only the fields they care about.
 
 ---
 
-_Status: Lectures 4.1 & 4.2 documented. Next: **lecture 4.3 (Using the
-Observer pattern — the Java WeatherData example)**._
+## 3. Lecture 4.4 — The Observer pattern and loose coupling
+
+### Takeaways (from the video)
+
+- The Observer pattern enables **loose coupling** by having subjects and
+  observers interact through an interface, without knowing each other's
+  concrete classes.
+- The subject maintains a list of observers and notifies them of changes, but
+  **doesn't care about their specific implementations**.
+- Observers can **dynamically subscribe, unsubscribe, or be replaced** without
+  affecting the subject, making the design flexible and easy to extend.
+
+### The three design choices that create loose coupling
+
+| Design choice | What it means | Which takeaway |
+|---|---|---|
+| **Subject depends on the Observer interface** | Not on any concrete class | #1 |
+| **Subject only calls `update()`** | Doesn't know what observers do inside | #2 |
+| **Observers managed via a list + register/remove** | Can change at runtime | #3 |
+
+All three together = maximum flexibility. Remove any one and coupling gets
+tighter.
+
+### Tight coupling vs. loose coupling (in code)
+
+```ts
+// TIGHTLY COUPLED — every new observer means editing the subject:
+this.display.update(temp);
+this.statistics.update(temp);
+this.forecast.update(temp);
+// add a 4th → edit this method
+
+// LOOSELY COUPLED — never changes, no matter how many observers:
+for (const observer of this.observers) {
+  observer.update(temp, humidity, pressure);
+}
+```
+
+### Dynamic subscribe/unsubscribe (at runtime)
+
+| Action | Method called | Subject's code changes? |
+|---|---|---|
+| Add a new observer at runtime | `registerObserver(newObserver)` | ❌ No |
+| Remove an observer at runtime | `removeObserver(oldObserver)` | ❌ No |
+| Replace one observer with another | `removeObserver(old)` + `registerObserver(new)` | ❌ No |
+
+This is **open-closed** behavior: the subject is *open for extension* (new
+observers slot in) but *closed for modification* (its source code doesn't
+change).
+
+## 4. The TypeScript implementation
+
+The pattern is implemented in `sandbox/04-observer/`. All files compile cleanly
+and the weather station runs end-to-end — including a demo of dynamic
+subscribe/unsubscribe at runtime.
+
+### File structure
+
+```
+sandbox/04-observer/
+├── interfaces.ts        ← Subject, Observer, DisplayElement (the contracts)
+├── weather-data.ts      ← WeatherData (ConcreteSubject — owns the data)
+├── displays.ts          ← 4 ConcreteObservers (Current, Statistics, Forecast, HeatIndex)
+└── weather-station.ts   ← the client (creates subject + observers, feeds data)
+```
+
+Run it:
+```bash
+npm run start -- 04-observer/weather-station.ts
+```
+
+### `interfaces.ts` — the contracts
+
+```ts
+/** SUBJECT — the "publisher" contract. */
+export interface Subject {
+  registerObserver(o: Observer): void;
+  removeObserver(o: Observer): void;
+  notifyObservers(): void;
+}
+
+/** OBSERVER — the "subscriber" contract (PUSH model). */
+export interface Observer {
+  update(temp: number, humidity: number, pressure: number): void;
+}
+
+/** DISPLAY ELEMENT — a separate responsibility ("display yourself"). */
+export interface DisplayElement {
+  display(): void;
+}
+```
+
+The course uses the **push model** — `update()` receives the data directly.
+`DisplayElement` is a separate interface so the display concern is decoupled
+from the observer concern.
+
+### `weather-data.ts` — the ConcreteSubject
+
+```ts
+export class WeatherData implements Subject {
+  private observers: Observer[] = [];    // ← list typed by the INTERFACE
+  private temperature = 0;
+  private humidity = 0;
+  private pressure = 0;
+
+  registerObserver(o: Observer): void { this.observers.push(o); }
+  removeObserver(o: Observer): void {
+    const i = this.observers.indexOf(o);
+    if (i >= 0) this.observers.splice(i, 1);
+  }
+  notifyObservers(): void {
+    for (const observer of this.observers) {
+      observer.update(this.temperature, this.humidity, this.pressure);
+    }
+  }
+  setMeasurements(t: number, h: number, p: number): void {
+    this.temperature = t; this.humidity = h; this.pressure = p;
+    this.notifyObservers();
+  }
+}
+```
+
+`notifyObservers()` is the loose-coupling payoff: one loop, one method call
+(`update()`), no knowledge of what any observer does.
+
+### `displays.ts` — the ConcreteObservers
+
+Each display implements **both** `Observer` and `DisplayElement`, and
+**self-registers** in its constructor:
+
+```ts
+export class CurrentConditionsDisplay implements Observer, DisplayElement {
+  private temperature = 0;
+  private humidity = 0;
+
+  constructor(weatherData: Subject) {
+    weatherData.registerObserver(this);  // ← self-subscribes
+  }
+
+  update(temp: number, humidity: number, _pressure: number): void {
+    this.temperature = temp;
+    this.humidity = humidity;
+    this.display();                       // ← does its own business
+  }
+
+  display(): void {
+    console.log(`Current conditions: ${this.temperature}F degrees and ${this.humidity}% humidity`);
+  }
+}
+```
+
+Four displays, each doing different things in `update()`:
+- **CurrentConditionsDisplay** — shows current temp + humidity
+- **StatisticsDisplay** — tracks avg/max/min over time
+- **ForecastDisplay** — predicts weather from pressure changes
+- **HeatIndexDisplay** — computes a derived value (heat index formula)
+
+The subject never knows what any of them do. That's loose coupling.
+
+### `weather-station.ts` — the client
+
+```ts
+const weatherData = new WeatherData();
+
+// Each display self-registers in its constructor:
+new CurrentConditionsDisplay(weatherData);
+new StatisticsDisplay(weatherData);
+new ForecastDisplay(weatherData);
+new HeatIndexDisplay(weatherData);
+
+// Each call pushes to all 4 displays:
+weatherData.setMeasurements(80, 65, 30.4);
+weatherData.setMeasurements(82, 70, 29.2);
+weatherData.setMeasurements(78, 90, 29.2);
+```
+
+### Sample output
+
+```
+--- Measurement 1: 80°F, 65%, 30.4 ---
+Current conditions: 80F degrees and 65% humidity
+Avg/Max/Min temperature = 80/80/80
+Forecast: Improving weather on the way!
+Heat index is 82.95535063709998
+
+--- Removing ForecastDisplay, then new measurement ---
+Current conditions: 75F degrees and 80% humidity
+Avg/Max/Min temperature = 78.75/82/75
+Heat index is 78.4801912799999
+                                        ← no Forecast line! it was removed
+
+--- Re-adding ForecastDisplay, then new measurement ---
+Current conditions: 70F degrees and 75% humidity
+Avg/Max/Min temperature = 77/82/70
+Heat index is 75.8199275515626
+Forecast: Improving weather on the way!  ← Forecast is back!
+```
+
+The dynamic unsubscribe/subscribe demo proves the loose-coupling claim:
+removing and re-adding `ForecastDisplay` required **zero changes** to
+`WeatherData`.
+
+### TypeScript practices used
+
+| Practice | Where | Why |
+|---|---|---|
+| `interface` for multi-method contracts | `interfaces.ts` | Subject has 3 methods, Observer has 1 with 3 params |
+| `import type` for interfaces | all files | `verbatimModuleSyntax` requires type-only imports |
+| `private observers: Observer[]` | `weather-data.ts` | List typed by the interface — the loose-coupling arrow |
+| Self-registration in constructor | `displays.ts` | Each observer subscribes itself: `weatherData.registerObserver(this)` |
+| `_pressure` / `_humidity` prefix | `displays.ts` | Marks intentionally-unused params (avoids `noUnusedParameters` errors) |
+| `implements Observer, DisplayElement` | `displays.ts` | A class can implement multiple interfaces |
+| `process.stdout.write()` | `ForecastDisplay` | Prints without a newline (Java's `System.out.print` equivalent) |
+
+---
+
+_Status: Lectures 4.1, 4.2 & 4.4 documented + TypeScript implementation in the
+sandbox. Next: lecture 4.3 (Using the Observer pattern), then the challenge
+and solution videos._
