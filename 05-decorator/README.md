@@ -1,7 +1,8 @@
 # Section 5 — The Decorator Pattern
 
 > _Documented after our discussion of lectures 5.1 (Creating chaos with
-> inheritance) and 5.2 (Understanding the open-closed principle)._
+> inheritance), 5.2 (Understanding the open-closed principle), and 5.4
+> (Understanding the Decorator pattern)._
 
 ---
 
@@ -250,5 +251,185 @@ purely by composition on the outside.
 
 ---
 
-_Status: Lectures 5.1 & 5.2 documented. Next: **lecture 5.4 (Extending
-behavior with composition / the Decorator defined)**._
+## 3. Lecture 5.4 — Understanding the Decorator pattern
+
+### The GoF definition
+
+> *"This pattern **attaches additional responsibilities** to an object
+> **dynamically**. Decorators provide a **flexible alternative to subclassing**
+> for extending functionality."*
+
+| Phrase | Meaning |
+|---|---|
+| **attaches additional responsibilities** | Adds behavior (cost, description) on top of an object |
+| **to an object** | To one specific *object*, not a whole class |
+| **dynamically** | At runtime, by wrapping — not at compile time by subclassing |
+| **flexible alternative to subclassing** | Same goal as inheritance (extend) but without the class explosion |
+
+### The class diagram
+
+```mermaid
+classDiagram
+    direction TB
+
+    class Component {
+        <<interface>>
+        +methodA()
+        +methodB()
+    }
+
+    class ConcreteComponent {
+        +methodA()
+        +methodB()
+    }
+
+    class Decorator {
+        +methodA()
+        +methodB()
+    }
+
+    class ConcreteDecoratorA {
+        -wrappedObj : Component
+        +methodA()
+        +methodB()
+    }
+
+    class ConcreteDecoratorB {
+        -wrappedObj : Component
+        +methodA()
+        +methodB()
+    }
+
+    ConcreteComponent ..|> Component
+    Decorator ..|> Component
+
+    ConcreteDecoratorA --|> Decorator
+    ConcreteDecoratorB --|> Decorator
+
+    Decorator o--> Component : wraps
+    ConcreteDecoratorA o--> Component : wrappedObj
+    ConcreteDecoratorB o--> Component : wrappedObj
+```
+
+### The four kinds of boxes
+
+| Box | Role | Coffee example |
+|---|---|---|
+| **Component** (interface) | The contract — what everything implements | `Beverage` (interface/abstract) |
+| **ConcreteComponent** | A plain base that implements Component | `HouseBlend`, `DarkRoast`, etc. |
+| **Decorator** (base) | The abstract "wrapper" type; same as Component | `CondimentDecorator` |
+| **ConcreteDecoratorA/B** | Real wrappers that add behavior | `Mocha`, `Whip`, `Milk`, `Soy` |
+
+### The five arrows
+
+1. `ConcreteComponent ..|> Component` — a base beverage **implements** the
+   contract.
+2. `Decorator ..|> Component` — the decorator base is ALSO a Component. *This
+   is the crucial "same type" relationship — it lets decorators nest and be
+   used interchangeably with the base.*
+3. `ConcreteDecoratorA ..|> Decorator` & `B ..|> Decorator` — the real
+   decorators **extend** the decorator base.
+4. `Decorator o--> Component : wraps` — the decorator base **holds** a
+   Component (composition). The HAS-A that makes it a wrapper.
+5. `ConcreteDecoratorA/B o--> Component : wrappedObj` — each concrete decorator
+   holds the actual `wrappedObj`.
+
+**The two relationships that matter most:**
+- `Decorator ..|> Component` — **IS-A** (same type → interchangeable & nestable)
+- `Decorator o--> Component` — **HAS-A** (wraps → can add behavior)
+
+A decorator is **simultaneously** a Component (IS-A) and a holder of a
+Component (HAS-A). That dual nature is the entire pattern.
+
+### Mapping the generic diagram to coffee
+
+```
+Component   (abstract)     →  Beverage
+├─ getDescription()        →  abstract getDescription()
+└─ cost()                  →  abstract cost()
+
+ConcreteComponent          →  HouseBlend, DarkRoast, Decaf, Espresso
+  (implements Beverage)       (each has its own base cost + description)
+
+Decorator (abstract)       →  CondimentDecorator
+  (extends Beverage)          (extends Beverage)
+  └─ holds a Beverage         └─ holds a Beverage (wrappedObj)
+      ("wraps")
+
+ConcreteDecoratorA/B        →  Mocha, Whip, Milk, Soy
+  (extends Decorator)          (extends CondimentDecorator)
+  └─ wrappedObj: Beverage      └─ this.beverage
+```
+
+### The mechanism — how a call travels through wrappers
+
+**Generic trace:** call `methodA()` on the outermost `ConcreteDecoratorA`:
+
+```
+ConcreteDecoratorA.methodA()
+  → add my own behavior
+  → call wrappedObj.methodA()   [the inner object]
+       if inner is a decorator → it does the same
+       if inner is ConcreteComponent → base method (stops)
+  → (on the way back, possibly combine results)
+```
+
+**Coffee trace:** `new Whip(new Mocha(new HouseBlend())).cost()`:
+
+```
+Whip.cost()  = 0.10 + Mocha.cost()
+                    = 0.20 + HouseBlend.cost()
+                                  = 0.89   ← base stops
+                    = 1.09
+             = 1.19
+```
+
+**Description (each decorator prepends its name):**
+
+```
+Whip.getDescription()
+  = "Whip, " + Mocha.getDescription()
+               = "Mocha, " + HouseBlend.getDescription()
+                            = "HouseBlend"
+               = "Mocha, HouseBlend"
+  = "Whip, Mocha, HouseBlend"
+```
+
+The calls **cascade down** through the wrappers to the base, then **unwind back
+up**, rolling up contributions. That's "attaching responsibilities dynamically."
+
+### Why the pattern works (the deep "why")
+
+1. **Because of IS-A (same type):** a fully decorated beverage is treated as a
+   plain `Beverage`. The client doesn't know or care how many layers it has.
+2. **Because of HAS-A (wrapping):** stack any combination, any order, at
+   runtime — `new Mocha(new Mocha(new Mocha(new Espresso())))`. No new class.
+3. **Because of delegation + augmentation:** each decorator adds its piece,
+   then hands off the rest to the wrapped object.
+4. **Because it's closed for modification:** adding `Caramel` = one new class;
+   everything existing is untouched (open-closed).
+
+### A subtle but important caveat
+
+A **ConcreteComponent** (HouseBlend) creates its own state (price,
+description). A **ConcreteDecorator** (Mocha) does NOT — it **delegates** to
+the `wrappedObj` it holds, adding only its own increment. The difference shows
+up in `cost()`/`getDescription()` overrides: decorators add their contribution
+and call `wrappedObj.cost()`/`getDescription()`, rather than returning a fixed
+value themselves.
+
+### The full mental model
+
+> **The Decorator pattern wraps a Component in a same-typed Decorator that
+> adds behavior and delegates the rest. Because the Decorator IS-A a Component
+> and HAS-A a Component, decorated objects are interchangeable with the base
+> and can be nested arbitrarily. A call on the outermost wrapper cascades down
+> to the base and unwinds back up, stacking each decorator's contribution.
+> Adding new behavior = one new decorator class; nothing existing is modified —
+> open-closed achieved via composition.**
+
+---
+
+_Status: Lectures 5.1, 5.2 & 5.4 documented. Next: **lecture 5.5 (Using the
+Decorator pattern — the Java StarbuzzCoffee code)**, then the TypeScript
+translation._
