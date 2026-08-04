@@ -1,7 +1,7 @@
 # Section 5 — The Decorator Pattern
 
-> _Documented after our discussion of lecture 5.1 (Creating chaos with
-> inheritance)._
+> _Documented after our discussion of lectures 5.1 (Creating chaos with
+> inheritance) and 5.2 (Understanding the open-closed principle)._
 
 ---
 
@@ -143,5 +143,112 @@ of the same type**, layering behavior.
 
 ---
 
-_Status: Lecture 5.1 documented. Next: **lecture 5.2 (Understanding the
-open-closed principle)**._
+## 2. Lecture 5.2 — Understanding the open-closed principle
+
+### Takeaways (from the video)
+
+- The open-closed principle means software should be **open for extension but
+  closed for modification**, allowing new features without changing existing
+  code.
+- Inheritance can lead to fragile designs that are hard to change, while
+  **composition** offers more flexibility by assembling behaviors at runtime.
+- The decorator pattern uses composition to add new behavior dynamically,
+  making designs more adaptable and easier to maintain without modifying
+  existing classes.
+
+### The principle — exactly what it means
+
+**"Open for extension"** = you can add new behavior/features **without breaking**
+what already works.
+
+**"Closed for modification"** = you don't have to **edit** existing, working,
+tested code to add that new feature.
+
+> **The goal: add new stuff by writing NEW code, not by changing OLD code.**
+
+**Why "closed for modification" matters:** existing code is usually already
+tested, deployed, and used by many things. Editing it risks breaking all of
+those. So structure the design so a new feature = a new file, not an edit to
+an existing one.
+
+### The crucial nuance — don't over-apply it
+
+**"Closed for modification" does NOT mean "never edit ANY existing file."**
+Two distinctly different kinds of changes:
+
+| Kind of change | Do you edit existing files? | Is this "extension"? |
+|---|---|---|
+| **Add a new feature/behavior** (new condiment, new beverage) | ❌ No — write a new file | ✅ Yes — what open-closed protects |
+| **Change existing behavior** (milk's price rises, fix a bug) | ✅ Yes — edit the relevant file | ❌ No — a legitimate change |
+
+If you take "closed for modification" too literally as "never touch anything,"
+you'll end up with unmaintainable designs (some changes genuinely require
+editing existing files). The principle is a **design target for extensibility**,
+not an absolute ban on editing.
+
+### Why inheritance → fragile; composition → flexible
+
+**Inheritance leads to fragile, hard-to-change designs:**
+1. Tight coupling to the parent — change the parent, every child is affected.
+2. The **fragile base class** problem — a small change to a widely-inherited
+   base can silently break many subclasses.
+3. **Static** — decided at compile time; can't mix differently at runtime.
+4. The class explosion we saw in 5.1.
+
+**Composition is more flexible:**
+1. **Assembled at runtime** — build behavior by composing objects.
+2. **Loose coupling** — objects interact through interfaces, not deep
+   parent-child chains.
+3. **Swap/stack freely** — add, remove, or reorder behaviors dynamically.
+4. **Flat, not deep** — no explosion of combination subclasses.
+
+The key phrase is **"assembling behaviors at runtime"** — composition lets you
+*configure* an object's behavior when the program runs, which inheritance
+(compile-time) cannot do.
+
+### The Decorator as the concrete implementation
+
+The Decorator ties it all together — it is a concrete realization of BOTH the
+open-closed principle AND "favor composition."
+
+- **Open for extension:** add a new condiment → write one new decorator class. ✅
+- **Closed for modification:** the beverage classes and existing decorators
+  never change. ✅
+- **Composition:** each decorator wraps (HAS-A) the object it decorates. ✅
+- **Dynamic:** you assemble the drink at runtime by nesting. ✅
+
+### The key maneuver that makes it work
+
+> **The decorator has the SAME TYPE as the object it wraps. So a decorator can
+> wrap a base beverage OR another decorator.**
+
+```ts
+// Each of these is a valid Beverage (they're all the same type):
+Beverage a = new HouseBlend();                          // base
+Beverage b = new Mocha(a);                              // decorator wraps base
+Beverage c = new Whip(b);                               // decorator wraps decorator
+```
+
+Because `Mocha`, `Whip`, and `HouseBlend` are all `Beverage`s, they nest
+freely. Each decorator adds its behavior **on top of** whatever it wraps, and
+everything still looks like one `Beverage` to the caller. The `Beverage` and
+`HouseBlend` code never needs to know about `Mocha` or `Whip` — they're added
+purely by composition on the outside.
+
+### How the three takeaways chain together
+
+| Takeaway | What it establishes |
+|---|---|
+| #1 Open-closed | The **principle**: extend without modifying |
+| #2 Composition > inheritance | The **mechanism**: why composition enables #1 |
+| #3 Decorator | The **pattern**: a concrete realization of #1 using #2 |
+
+> **The full idea:** the open-closed principle is the *goal* (extend without
+> rewriting); "favor composition" is the *strategy* (assemble at runtime rather
+> than subclassing); and the Decorator is one concrete *implementation* (wrap an
+> object with same-typed decorators that layer behavior).
+
+---
+
+_Status: Lectures 5.1 & 5.2 documented. Next: **lecture 5.4 (Extending
+behavior with composition / the Decorator defined)**._
