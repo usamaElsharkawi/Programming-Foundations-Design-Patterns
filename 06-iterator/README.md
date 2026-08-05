@@ -2,7 +2,7 @@
 
 > _Documented after our discussion of lectures 6.1 (Encapsulating iteration)
 > and 6.2 (Understanding the Iterator pattern), plus the TypeScript
-> implementation._
+> implementation and the built-in `Iterable` language feature._
 
 ---
 
@@ -479,6 +479,153 @@ protocol is covered by the course's "iterator as language feature" topic
 
 ---
 
-_Status: Lectures 6.1 & 6.2 documented + TypeScript implementation in the
-sandbox. Next: lecture 6.4 (Using built-in iterators) / the challenge and
-solution videos._
+## 4. The Iterator pattern as a TypeScript language feature
+
+The core insight: **you've been using the Iterator pattern all along.** TS/JS
+baked it into the language — you don't write `hasNext()`/`next()` yourself. The
+built-in version maps exactly onto the pattern we implemented by hand.
+
+### The built-in `Iterable` and `Iterator` protocol
+
+**`Iterable`** — the AGGREGATE (the thing you can iterate). It requires a
+`[Symbol.iterator]()` method (= `createIterator()`):
+
+```ts
+interface Iterable<T> {
+  [Symbol.iterator](): Iterator<T>;   // ← this is createIterator()
+}
+```
+
+**`Iterator`** — the traverse. A single `next()` returns an `IteratorResult`
+combining "hasNext" AND "next" into one call:
+
+```ts
+interface Iterator<T> {
+  next(): IteratorResult<T>;
+}
+interface IteratorResult<T> {
+  value: T;        // the current element
+  done: boolean;   // = !hasNext()
+}
+```
+
+**Key difference from our custom version:**
+- Custom `Iterator`: **two** calls — `hasNext()` (ask) then `next()` (get).
+- Built-in: **one** call — `next()` returns `{ value, done }`. The `done` flag
+  *is* the hasNext answer, delivered with the value.
+
+```ts
+const result = iterator.next();      // { value: ..., done: false }
+while (!result.done) {
+  console.log(result.value);
+  // next iteration calls iterator.next() again
+}
+```
+
+### `for...of` — the language's built-in client loop
+
+Instead of a manual `while (hasNext()) { next() }`, `for...of` does the whole
+iteration for you:
+
+```ts
+for (const item of menu) {          // menu implements Iterable<MenuItem>
+  console.log(item.getName());
+}
+```
+
+**What `for...of` secretly does** (the pattern under the hood):
+```ts
+const iterator = menu[Symbol.iterator]();   // createIterator()
+let result = iterator.next();
+while (!result.done) {
+  const item = result.value;
+  console.log(item.getName());
+  result = iterator.next();                 // advance + check done
+}
+```
+
+So `for...of` is sugar for the exact `createIterator()` + `next()` pattern we
+implemented, automated by the language.
+
+### Which types are already `Iterable`?
+
+| Type | Iterable? |
+|---|---|
+| `Array` | ✅ |
+| `string` | ✅ |
+| `Map` | ✅ |
+| `Set` | ✅ |
+| `arguments` / `NodeList` | ✅ |
+| generator objects | ✅ |
+
+```ts
+for (const ch of "hello") { ... }        // 'h','e','l','l','o'
+for (const [k, v] of map) { ... }        // Map → key/value pairs
+```
+
+### Higher-order methods (filter/map/forEach)
+
+Built on iteration, arrays give declarative methods that encapsulate traversal
+even further:
+```ts
+menuItems
+  .filter(item => item.isVegetarian())
+  .map(item => item.getName())
+  .forEach(name => console.log(name));
+```
+
+### Making your OWN class iterable
+
+If your class implements `Iterable`, then `for...of`, spread, and destructuring
+all just work on it:
+
+```ts
+class DinerMenu implements Iterable<MenuItem> {
+  private items: MenuItem[] = [];
+  // ... addItem etc.
+
+  [Symbol.iterator](): Iterator<MenuItem> {
+    let index = 0;
+    const items = this.items;
+    return {
+      next(): IteratorResult<MenuItem> {
+        if (index < items.length) {
+          return { value: items[index++], done: false };
+        }
+        return { value: undefined as unknown as MenuItem, done: true };
+      },
+    };
+  }
+}
+```
+
+Client:
+```ts
+for (const item of dinerMenu) { ... }   // for...of
+const all = [...dinerMenu];             // spread
+const [first, ...rest] = dinerMenu;     // destructuring
+```
+
+### Mapping: our custom version ↔ the built-in
+
+| Learning version (Java-style) | Built-in TypeScript |
+|---|---|
+| `interface Iterator<T> { hasNext; next }` | `Iterator<T>` with `next(): { value, done }` |
+| `hasNext()` | the `done` flag from `next()` |
+| `createIterator()` (aggregate) | `[Symbol.iterator]()` (Iterable) |
+| Client: `while (it.hasNext()) { it.next() }` | `for...of` loop |
+| `Menu` interface | `Iterable<T>` interface |
+
+### The takeaway
+
+> **The Iterator pattern is a language convention in TypeScript/JavaScript. If
+> you implement `[Symbol.iterator]()` (the "createIterator"), your object becomes
+> `Iterable`, and the built-in `for...of`, spread (`...`), and destructuring all
+> work with it. The pattern is so fundamental it's baked into the syntax — you
+> use it every time you write `for (const x of list)`.**
+
+---
+
+_Status: Lectures 6.1 & 6.2 documented + TS implementation (custom Iterator)
+and the built-in Iterable protocol documented. Next: the challenge and
+solution videos, then optionally a native `Iterable` demo file._
