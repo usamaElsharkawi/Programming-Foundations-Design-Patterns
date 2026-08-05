@@ -1,7 +1,8 @@
 # Section 6 — The Iterator Pattern
 
 > _Documented after our discussion of lectures 6.1 (Encapsulating iteration)
-> and 6.2 (Understanding the Iterator pattern)._
+> and 6.2 (Understanding the Iterator pattern), plus the TypeScript
+> implementation._
 
 ---
 
@@ -286,5 +287,198 @@ hidden behind the interface.
 
 ---
 
-_Status: Lectures 6.1 & 6.2 documented. Next: **lecture 6.3 (Using the Iterator
-pattern — the Java DinerMenu/PancakeHouseMenu code)**._
+## 3. The TypeScript implementation
+
+The pattern is implemented in `sandbox/06-iterator/`. All files compile
+cleanly and the MenuTestDrive runs end-to-end, matching the Java output. This
+is a **faithful translation** using custom `Iterator`/`Menu` interfaces (the
+native TS `Iterable`/`Iterator` protocol is discussed below).
+
+### File structure
+
+```
+sandbox/06-iterator/
+├── menu-item.ts            ← MenuItem (the element)
+├── interfaces.ts           ← Iterator<T> (hasNext/next) + Menu (createIterator)
+├── diner-menu.ts           ← DinerMenu (array-backed) + DinerMenuIterator
+├── pancake-house-menu.ts   ← PancakeHouseMenu (growable-list-backed) + iterator
+├── waitress.ts             ← the client (prints ANY menu via the Iterator)
+└── menu-test-drive.ts      ← the entry point
+```
+
+Run it:
+```bash
+npm run start -- 06-iterator/menu-test-drive.ts
+```
+
+### `interfaces.ts` — the two contracts
+
+```ts
+/** ITERATOR — the iteration contract. */
+export interface Iterator<T> {
+  hasNext(): boolean;
+  next(): T;
+}
+
+/** AGGREGATE — the collection contract. */
+export interface Menu {
+  createIterator(): Iterator<MenuItem>;
+}
+```
+
+The client depends ONLY on these two interfaces — never on a concrete menu or
+iterator. That's the loose coupling.
+
+### `diner-menu.ts` — array-backed
+
+DinerMenu stores items in a **fixed-size array** (MAX_ITEMS = 6) with a
+separate count, mirroring the Java menu that uses a raw array:
+
+```ts
+export class DinerMenuIterator implements Iterator<MenuItem> {
+  private position = 0;
+  constructor(private items: MenuItem[]) {}
+
+  hasNext(): boolean {
+    return this.position < this.items.length && this.items[this.position] != null;
+  }
+  next(): MenuItem {
+    const item = this.items[this.position]!;  // non-null: hasNext() was true
+    this.position += 1;
+    return item;
+  }
+}
+
+export class DinerMenu implements Menu {
+  private static readonly MAX_ITEMS = 6;
+  private menuItems: MenuItem[] = [];
+  private numberOfItems = 0;
+  // constructor + addItem() guard the array against overflow ...
+  createIterator(): Iterator<MenuItem> {
+    return new DinerMenuIterator(this.menuItems);
+  }
+}
+```
+
+### `pancake-house-menu.ts` — growable-list-backed
+
+PancakeHouseMenu stores items in a **growable array** via `push()`, mirroring
+the Java menu that uses an ArrayList:
+
+```ts
+export class PancakeHouseMenuIterator implements Iterator<MenuItem> {
+  private position = 0;
+  constructor(private items: MenuItem[]) {}
+
+  hasNext(): boolean {
+    return this.position < this.items.length;          // no null-slot check
+  }
+  next(): MenuItem {
+    return this.items[this.position++]!;
+  }
+}
+
+export class PancakeHouseMenu implements Menu {
+  private menuItems: MenuItem[] = [];
+  addItem(n, d, v, p): void { this.menuItems.push(new MenuItem(n, d, v, p)); }
+  createIterator(): Iterator<MenuItem> {
+    return new PancakeHouseMenuIterator(this.menuItems);
+  }
+}
+```
+
+**Notice the two iterators genuinely differ** (DinerMenu checks for null slots,
+PancakeHouseMenu doesn't; different `hasNext()` logic). That collection-specific
+logic lives in each iterator — not in the client. This is "encapsulate what
+varies."
+
+### `waitress.ts` — the client (the payoff)
+
+```ts
+export class Waitress {
+  constructor(
+    private pancakeHouseMenu: Menu,
+    private dinerMenu: Menu,
+  ) {}
+
+  printMenu(): void {
+    const pancakeIterator = this.pancakeHouseMenu.createIterator();
+    const dinerIterator = this.dinerMenu.createIterator();
+    console.log("MENU\n----\nBREAKFAST");
+    this.printMenuItems(pancakeIterator);
+    console.log("\nLUNCH");
+    this.printMenuItems(dinerIterator);
+  }
+
+  // ONE method that prints ANY menu — the core benefit:
+  private printMenuItems(iterator: Iterator<MenuItem>): void {
+    while (iterator.hasNext()) {
+      const menuItem = iterator.next();
+      console.log(`${menuItem.getName()}, ${menuItem.getPrice()} -- ${menuItem.getDescription()}`);
+    }
+  }
+}
+```
+
+**Key observation:** `printMenuItems` works for **both** the array-backed
+DinerMenu and the list-backed PancakeHouseMenu, because it only uses
+`hasNext()`/`next()`. The Waitress never knows (or cares) how a menu is stored.
+
+### Sample output
+
+```
+=== Full Menu ===
+
+MENU
+----
+BREAKFAST
+K&B's Pancake Breakfast, 2.99 -- Pancakes with scrambled eggs, and toast
+Regular Pancake Breakfast, 2.99 -- Pancakes with fried eggs, sausage
+...
+LUNCH
+Vegetarian BLT, 2.99 -- (Fakin') Bacon with lettuce & tomato on whole wheat
+...
+
+=== Vegetarian Menu ===
+... (only vegetarian items, filtered inside the client)
+```
+
+### Bonus — the native TS `Iterable` protocol
+
+As discussed, the pattern's "aggregate" is what TypeScript/JavaScript call
+`Iterable`, and `createIterator()` is `[Symbol.iterator]()`. A more idiomatic
+version would implement the native protocol so `for...of` works directly:
+
+```ts
+class DinerMenu implements Iterable<MenuItem> {
+  [Symbol.iterator](): Iterator<MenuItem> {
+    // native protocol returns { value, done } from a single next()
+    ...
+  }
+}
+// Client can then write:
+for (const item of dinerMenu) { ... }
+```
+
+We kept a **custom `Iterator` interface here** for a direct, readable mapping
+to the Java code and the pattern's `hasNext()`/`next()` vocabulary. The native
+protocol is covered by the course's "iterator as language feature" topic
+(lecture 6.7).
+
+### TypeScript practices used
+
+| Practice | Where | Why |
+|---|---|---|
+| Custom `interface Iterator<T>` + `interface Menu` | `interfaces.ts` | Faithful to Java's `Iterator`/`Menu`; avoids clashing with TS's built-in `Iterator` |
+| `createIterator()` returns `Iterator<MenuItem>` | menus | The aggregate contract; client depends only on it |
+| Collection-specific `hasNext()`/`next()` | iterators | Encapsulate the varying iteration logic per structure |
+| `private position` field | iterators | Tracks the "current place in the sequence" |
+| Non-null assertion `!` | iterators | `noUncheckedIndexedAccess` — safe because `hasNext()` guarantees validity |
+| `import type` for interfaces | all files | `verbatimModuleSyntax` |
+| Client types only to `Menu` / `Iterator` | `waitress.ts` | Loose coupling — never to concrete menus |
+
+---
+
+_Status: Lectures 6.1 & 6.2 documented + TypeScript implementation in the
+sandbox. Next: lecture 6.4 (Using built-in iterators) / the challenge and
+solution videos._
